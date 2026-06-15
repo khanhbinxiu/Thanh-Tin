@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 const links = [
   { href: '/', label: 'Tổng quan' },
   { href: '/customers', label: 'Khách hàng' },
+  { href: '/mappings', label: 'Mapping' },
   { href: '/upload', label: 'Upload Excel' },
   { href: '/export', label: 'Xuất biên bản' },
   { href: '/review', label: 'Xem dữ liệu' },

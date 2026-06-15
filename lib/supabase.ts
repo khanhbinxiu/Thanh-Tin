@@ -19,6 +19,11 @@ export type Transaction = {
   delivery_date: string
   customer_code: string
   location: string
+  input_key: string | null
+  output_file_name: string | null
+  output_sheet_name: string | null
+  month: number | null
+  year: number | null
   pic: string | null
   b45_delivered: number
   b45_returned: number

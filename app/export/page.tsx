@@ -7,21 +7,21 @@ import { saveAs } from 'file-saver'
 const COMPANY_NAME = 'CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ THÀNH TÍN LBG'
 const COMPANY_ADDRESS = '115/22/60 BIS Đường Nguyễn Du, Phường 7, Quận Bình Thạnh, TP HCM'
 
-function lastDayOfMonth(y: number, m: number) {
-  return new Date(y, m, 0).getDate()
-}
+function lastDay(y: number, m: number) { return new Date(y, m, 0).getDate() }
+
+type SheetGroup = { sheetName: string; locationName: string; rows: Transaction[] }
+type FileGroup = { fileName: string; customerCode: string; sheets: SheetGroup[] }
 
 export default function ExportPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [selectedCode, setSelectedCode] = useState('')
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [year, setYear] = useState(new Date().getFullYear())
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [useCustom, setUseCustom] = useState(false)
-  const [preview, setPreview] = useState<{ location: string; rows: Transaction[] }[]>([])
+  const [fileGroups, setFileGroups] = useState<FileGroup[]>([])
   const [loading, setLoading] = useState(false)
-  const [exporting, setExporting] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.from('customers').select('*').order('code').then(({ data }) => setCustomers(data || []))
@@ -29,175 +29,178 @@ export default function ExportPage() {
 
   function getPeriod() {
     if (useCustom && customFrom && customTo) return { from: customFrom, to: customTo }
-    const from = `${year}-${String(month).padStart(2, '0')}-01`
-    const to = `${year}-${String(month).padStart(2, '0')}-${lastDayOfMonth(year, month)}`
-    return { from, to }
+    return {
+      from: `${year}-${String(month).padStart(2, '0')}-01`,
+      to: `${year}-${String(month).padStart(2, '0')}-${lastDay(year, month)}`,
+    }
   }
 
   async function loadPreview() {
-    if (!selectedCode) return
     const { from, to } = getPeriod()
     setLoading(true)
     const { data } = await supabase.from('transactions')
       .select('*')
-      .eq('customer_code', selectedCode)
       .gte('delivery_date', from)
       .lte('delivery_date', to)
+      .not('output_file_name', 'is', null)
       .order('delivery_date')
-    const txs = data || []
-    const locations = [...new Set(txs.map(t => t.location))]
-    setPreview(locations.map(loc => ({ location: loc, rows: txs.filter(t => t.location === loc) })))
+    const txs: Transaction[] = data || []
+
+    // Group by output_file_name → output_sheet_name
+    const fileMap = new Map<string, FileGroup>()
+    for (const tx of txs) {
+      const fname = tx.output_file_name || 'UNMAPPED'
+      if (!fileMap.has(fname)) {
+        fileMap.set(fname, { fileName: fname, customerCode: tx.customer_code, sheets: [] })
+      }
+      const fg = fileMap.get(fname)!
+      let sg = fg.sheets.find(s => s.sheetName === tx.output_sheet_name)
+      if (!sg) {
+        sg = { sheetName: tx.output_sheet_name || 'công nợ', locationName: tx.location, rows: [] }
+        fg.sheets.push(sg)
+      }
+      sg.rows.push(tx)
+    }
+    setFileGroups([...fileMap.values()])
     setLoading(false)
   }
 
-  async function exportExcel() {
-    if (!selectedCode || preview.length === 0) return
-    const customer = customers.find(c => c.code === selectedCode)!
+  async function exportFile(fg: FileGroup) {
     const { from, to } = getPeriod()
     const fromDate = new Date(from)
     const toDate = new Date(to)
-    const monthLabel = useCustom ? `${from}_${to}` : `T${String(month).padStart(2, '0')}`
+    const customer = customers.find(c => c.code === fg.customerCode)
+    setExporting(fg.fileName)
 
-    setExporting(true)
     const wb = new ExcelJS.Workbook()
 
-    for (const group of preview) {
-      const ws = wb.addWorksheet(group.location.substring(0, 31))
+    for (const sg of fg.sheets) {
+      const ws = wb.addWorksheet(sg.sheetName.substring(0, 31))
       const totals = {
-        b45d: group.rows.reduce((s, r) => s + r.b45_delivered, 0),
-        b45r: group.rows.reduce((s, r) => s + r.b45_returned, 0),
-        b12d: group.rows.reduce((s, r) => s + r.b12_delivered, 0),
-        b12r: group.rows.reduce((s, r) => s + r.b12_returned, 0),
-        gasD: group.rows.reduce((s, r) => s + r.gas_delivered, 0),
-        gasR: group.rows.reduce((s, r) => s + r.gas_returned, 0),
-        gasPaid: group.rows.reduce((s, r) => s + r.gas_paid, 0),
-        total: group.rows.reduce((s, r) => s + r.total_amount, 0),
-        vat: group.rows.reduce((s, r) => s + r.total_amount * 0.08, 0),
+        b45d: sg.rows.reduce((s, r) => s + r.b45_delivered, 0),
+        b45r: sg.rows.reduce((s, r) => s + r.b45_returned, 0),
+        b12d: sg.rows.reduce((s, r) => s + r.b12_delivered, 0),
+        b12r: sg.rows.reduce((s, r) => s + r.b12_returned, 0),
+        gasD: sg.rows.reduce((s, r) => s + r.gas_delivered, 0),
+        gasR: sg.rows.reduce((s, r) => s + r.gas_returned, 0),
+        gasPaid: sg.rows.reduce((s, r) => s + r.gas_paid, 0),
+        total: sg.rows.reduce((s, r) => s + r.total_amount, 0),
       }
+      const vat = totals.total * 0.08
 
-      // Header
+      // Row 1: Company header + Tháng
       ws.mergeCells('A1:L1')
-      ws.getCell('A1').value = COMPANY_NAME
-      ws.getCell('A1').font = { bold: true, size: 11 }
-
-      ws.mergeCells('A2:L2')
-      ws.getCell('A2').value = COMPANY_ADDRESS
-      ws.getCell('A2').font = { size: 10 }
-
+      ws.getCell('A1').value = `${COMPANY_NAME}\n${COMPANY_ADDRESS}`
+      ws.getCell('A1').font = { bold: true, size: 10 }
+      ws.getCell('A1').alignment = { wrapText: true }
+      ws.getRow(1).height = 30
       ws.getCell('M1').value = 'Tháng:'
-      ws.getCell('N1').value = month
+      ws.getCell('N1').value = useCustom ? '' : month
+
+      // Row 2: Title + Năm
+      ws.mergeCells('A2:L2')
+      ws.getCell('A2').value = 'BIÊN BẢN ĐỐI CHIẾU CÔNG NỢ'
+      ws.getCell('A2').font = { bold: true, size: 13 }
+      ws.getCell('A2').alignment = { horizontal: 'center' }
       ws.getCell('M2').value = 'Năm:'
       ws.getCell('N2').value = year
 
-      ws.mergeCells('A4:L4')
-      ws.getCell('A4').value = 'BIÊN BẢN ĐỐI CHIẾU CÔNG NỢ'
-      ws.getCell('A4').font = { bold: true, size: 13 }
-      ws.getCell('A4').alignment = { horizontal: 'center' }
+      // Row 3
+      ws.mergeCells('A3:L3')
+      ws.getCell('A3').value = useCustom
+        ? `(${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} - ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()})`
+        : `(THÁNG ${String(month).padStart(2,'0')}/${year})`
+      ws.getCell('A3').alignment = { horizontal: 'center' }
 
-      ws.mergeCells('A5:L5')
-      ws.getCell('A5').value = `(THÁNG ${String(month).padStart(2, '0')}/${year})`
-      ws.getCell('A5').alignment = { horizontal: 'center' }
+      // Row 5: Customer info
+      ws.mergeCells('A5:N5')
+      ws.getCell('A5').value = `KHÁCH HÀNG: ${customer?.name || fg.customerCode}\nĐỊA CHỈ: ${customer?.address || ''}\nMST: ${customer?.tax_code || ''}`
+      ws.getCell('A5').font = { bold: true }
+      ws.getCell('A5').alignment = { wrapText: true }
+      ws.getRow(5).height = 45
 
-      ws.mergeCells('A7:L7')
-      ws.getCell('A7').value = `KHÁCH HÀNG: ${customer.name}`
-      ws.getCell('A7').font = { bold: true }
+      ws.mergeCells('A7:N7')
+      ws.getCell('A7').value = 'Hai bên thống nhất số lượng bên B mua của bên A như sau:'
 
-      ws.mergeCells('A8:L8')
-      ws.getCell('A8').value = `ĐỊA CHỈ: ${customer.address || ''}`
+      ws.mergeCells('A8:N8')
+      ws.getCell('A8').value = `1. Thời gian giao nhận: Từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
 
-      ws.mergeCells('A9:L9')
-      ws.getCell('A9').value = `MST: ${customer.tax_code || ''}`
+      ws.mergeCells('A9:N9')
+      ws.getCell('A9').value = '2. Khối lượng hàng hóa theo bảng kê chi tiết:'
 
-      ws.mergeCells('A11:L11')
-      ws.getCell('A11').value = 'Hai bên thống nhất số lượng bên B mua của bên A như sau:'
-
-      ws.mergeCells('A12:L12')
-      ws.getCell('A12').value = `1. Thời gian giao nhận: Từ ${fromDate.getDate()}/${fromDate.getMonth() + 1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth() + 1}/${toDate.getFullYear()}`
-
-      ws.mergeCells('A13:L13')
-      ws.getCell('A13').value = '2. Khối lượng hàng hóa theo bảng kê chi tiết:'
-
-      // Table header row 1
-      const hdr1 = ws.getRow(14)
-      ;['STT', 'Ngày giao', 'Nội Dung', 'Bình Giao', 'Trả vỏ', 'Bình Giao', 'Trả vỏ', 'Gas giao', 'Gas trả', 'Gas thanh toán', 'Đơn giá chưa VAT (vnđ/kg)', 'Thành Tiền', 'Ghi chú'].forEach((v, i) => {
-        hdr1.getCell(i + 1).value = v
-        hdr1.getCell(i + 1).font = { bold: true }
-        hdr1.getCell(i + 1).alignment = { horizontal: 'center', wrapText: true }
-        hdr1.getCell(i + 1).border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
-      })
-
-      // Table header row 2 (units)
-      const hdr2 = ws.getRow(15)
-      ;['', '', '', 'B45kg', 'B45kg', 'B12kg', 'B12kg', 'Kg', 'Kg', 'Kg', '', '', ''].forEach((v, i) => {
-        hdr2.getCell(i + 1).value = v
-        hdr2.getCell(i + 1).alignment = { horizontal: 'center' }
-        hdr2.getCell(i + 1).border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
-      })
-
-      // Data rows
-      group.rows.forEach((r, idx) => {
-        const row = ws.getRow(16 + idx)
-        const vals = [
-          idx + 1,
-          r.delivery_date,
-          r.location,
-          r.b45_delivered || '',
-          r.b45_returned || '',
-          r.b12_delivered || '',
-          r.b12_returned || '',
-          r.gas_delivered || '',
-          r.gas_returned || '',
-          r.gas_paid || '',
-          r.unit_price || '',
-          r.total_amount || '',
-          r.note || '',
-        ]
-        vals.forEach((v, i) => {
-          row.getCell(i + 1).value = v as ExcelJS.CellValue
-          row.getCell(i + 1).border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
-          if (i >= 3) row.getCell(i + 1).alignment = { horizontal: 'right' }
+      // Table headers row 10 & 11
+      const hdrs = ['STT','Ngày giao','Nội Dung','Bình Giao','Trả vỏ','Bình Giao','Trả vỏ','Gas giao','Gas trả','Gas thanh toán','Đơn giá chưa VAT (vnđ/kg)','Thành Tiền','Ghi chú']
+      const units = ['','','','B45kg','B45kg','B12kg','B12kg','Kg','Kg','Kg','','','']
+      ;[hdrs, units].forEach((arr, ri) => {
+        arr.forEach((v, ci) => {
+          const cell = ws.getRow(10 + ri).getCell(ci + 1)
+          cell.value = v
+          cell.font = { bold: ri === 0 }
+          cell.alignment = { horizontal: 'center', wrapText: true }
+          cell.border = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
         })
       })
 
-      // Totals row
-      const totRow = ws.getRow(16 + group.rows.length)
-      const totVals = ['', 'TỔNG', '', totals.b45d, totals.b45r, totals.b12d, totals.b12r, totals.gasD, totals.gasR, totals.gasPaid, '', totals.total, '']
-      totVals.forEach((v, i) => {
-        totRow.getCell(i + 1).value = v as ExcelJS.CellValue
-        totRow.getCell(i + 1).font = { bold: true }
-        totRow.getCell(i + 1).border = { top: { style: 'thin' }, bottom: { style: 'double' }, left: { style: 'thin' }, right: { style: 'thin' } }
-        if (i >= 3) totRow.getCell(i + 1).alignment = { horizontal: 'right' }
+      // Data rows from 12
+      sg.rows.forEach((r, idx) => {
+        const dr = ws.getRow(12 + idx)
+        const vals: (string|number)[] = [
+          idx+1, r.delivery_date, sg.locationName,
+          r.b45_delivered||'', r.b45_returned||'',
+          r.b12_delivered||'', r.b12_returned||'',
+          r.gas_delivered||'', r.gas_returned||'', r.gas_paid||'',
+          r.unit_price||'', r.total_amount||'', r.note||''
+        ]
+        vals.forEach((v, ci) => {
+          const cell = dr.getCell(ci + 1)
+          cell.value = v as ExcelJS.CellValue
+          cell.border = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
+          if (ci >= 3) cell.alignment = { horizontal: 'right' }
+        })
       })
 
-      const afterTotal = 17 + group.rows.length
-      ws.getRow(afterTotal).getCell(10).value = 'Thuế GTGT (8%)'
-      ws.getRow(afterTotal).getCell(12).value = totals.vat
-      ws.getRow(afterTotal + 1).getCell(10).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
-      ws.getRow(afterTotal + 1).getCell(12).value = totals.total + totals.vat
-      ws.getRow(afterTotal + 2).getCell(10).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth() + 1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth() + 1}/${toDate.getFullYear()}`
-      ws.getRow(afterTotal + 2).getCell(12).value = totals.total + totals.vat
+      // Totals
+      const tRow = ws.getRow(12 + sg.rows.length)
+      ;['','TỔNG','',totals.b45d,totals.b45r,totals.b12d,totals.b12r,totals.gasD,totals.gasR,totals.gasPaid,'',totals.total,''].forEach((v, ci) => {
+        const cell = tRow.getCell(ci+1)
+        cell.value = v as ExcelJS.CellValue
+        cell.font = { bold: true }
+        cell.border = { top:{style:'thin'}, bottom:{style:'double'}, left:{style:'thin'}, right:{style:'thin'} }
+        if (ci >= 3) cell.alignment = { horizontal: 'right' }
+      })
 
-      // Signatures
-      const sigRow = afterTotal + 5
-      ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth() + 1} năm ${toDate.getFullYear()}`
-      ws.getRow(sigRow + 1).getCell(1).value = 'Xác nhận của khách hàng'
-      ws.getRow(sigRow + 1).getCell(10).value = 'Người lập'
+      const after = 13 + sg.rows.length
+      ws.getRow(after).getCell(10).value = 'Thuế GTGT (8%)'
+      ws.getRow(after).getCell(12).value = vat
+      ws.getRow(after+1).getCell(10).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
+      ws.getRow(after+1).getCell(12).value = totals.total + vat
+      ws.getRow(after+2).getCell(10).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
+      ws.getRow(after+2).getCell(12).value = totals.total + vat
 
-      // Column widths
+      const sigRow = after + 5
+      ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
+      ws.getRow(sigRow+1).getCell(1).value = 'Xác nhận của khách hàng'
+      ws.getRow(sigRow+1).getCell(10).value = 'Người lập'
+
       ws.columns = [
-        { width: 5 }, { width: 14 }, { width: 20 }, { width: 8 }, { width: 8 },
-        { width: 8 }, { width: 8 }, { width: 10 }, { width: 10 }, { width: 16 },
-        { width: 18 }, { width: 16 }, { width: 20 },
+        {width:5},{width:14},{width:22},{width:8},{width:8},
+        {width:8},{width:8},{width:10},{width:10},{width:16},
+        {width:18},{width:16},{width:20},
       ]
     }
 
     const buf = await wb.xlsx.writeBuffer()
-    const customerName = customer.name.replace(/[\\/:*?"<>|]/g, '_').substring(0, 40)
-    saveAs(new Blob([buf]), `ThanhTin_${monthLabel}_${customerName}.xlsx`)
-    setExporting(false)
+    const monthLabel = useCustom ? `${from}_${to}` : `T${String(month).padStart(2,'0')}`
+    saveAs(new Blob([buf]), `ThanhTin_${monthLabel}_${fg.fileName}.xlsx`)
+    setExporting(null)
   }
 
-  const customer = customers.find(c => c.code === selectedCode)
+  async function exportAll() {
+    for (const fg of fileGroups) {
+      await exportFile(fg)
+    }
+  }
+
   const { from, to } = getPeriod()
 
   return (
@@ -206,24 +209,13 @@ export default function ExportPage() {
 
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Khách hàng *</label>
-            <select value={selectedCode} onChange={e => setSelectedCode(e.target.value)}
-              className="border rounded px-3 py-2 text-sm w-full">
-              <option value="">-- Chọn KH --</option>
-              {customers.map(c => <option key={c.code} value={c.code}>{c.code} – {c.name}</option>)}
-            </select>
-          </div>
-
           {!useCustom && (
             <>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Tháng</label>
                 <select value={month} onChange={e => setMonth(Number(e.target.value))}
                   className="border rounded px-3 py-2 text-sm w-full">
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m}>Tháng {m}</option>
-                  ))}
+                  {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>Tháng {m}</option>)}
                 </select>
               </div>
               <div>
@@ -233,98 +225,104 @@ export default function ExportPage() {
               </div>
             </>
           )}
-
           {useCustom && (
             <>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Từ ngày</label>
-                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-                  className="border rounded px-3 py-2 text-sm w-full" />
+                <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} className="border rounded px-3 py-2 text-sm w-full"/>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Đến ngày</label>
-                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-                  className="border rounded px-3 py-2 text-sm w-full" />
+                <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} className="border rounded px-3 py-2 text-sm w-full"/>
               </div>
             </>
           )}
         </div>
-
         <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-          <input type="checkbox" checked={useCustom} onChange={e => setUseCustom(e.target.checked)} />
-          Tùy chỉnh kỳ (không theo tháng chuẩn)
+          <input type="checkbox" checked={useCustom} onChange={e=>setUseCustom(e.target.checked)}/>
+          Tùy chỉnh kỳ
         </label>
-
         <div className="flex gap-3">
-          <button onClick={loadPreview} disabled={!selectedCode || loading}
+          <button onClick={loadPreview} disabled={loading}
             className="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
             {loading ? 'Đang tải...' : 'Xem trước'}
           </button>
-          <button onClick={exportExcel} disabled={!selectedCode || preview.length === 0 || exporting}
-            className="bg-green-600 text-white px-5 py-2 rounded text-sm hover:bg-green-700 disabled:opacity-50">
-            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
-          </button>
+          {fileGroups.length > 0 && (
+            <button onClick={exportAll} disabled={!!exporting}
+              className="bg-green-600 text-white px-5 py-2 rounded text-sm hover:bg-green-700 disabled:opacity-50">
+              {exporting ? `Đang xuất ${exporting}...` : `Xuất tất cả (${fileGroups.length} file)`}
+            </button>
+          )}
         </div>
       </div>
 
-      {preview.length > 0 && customer && (
-        <div className="space-y-6">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-            <strong>{customer.name}</strong> — Kỳ: {from} đến {to} — {preview.length} địa điểm
-          </div>
-
-          {preview.map(group => {
-            const totalAmount = group.rows.reduce((s, r) => s + r.total_amount, 0)
-            const vat = totalAmount * 0.08
+      {fileGroups.length > 0 && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">Kỳ: <strong>{from}</strong> → <strong>{to}</strong> — {fileGroups.length} file</p>
+          {fileGroups.map(fg => {
+            const customer = customers.find(c => c.code === fg.customerCode)
+            const totalRows = fg.sheets.reduce((s, sh) => s + sh.rows.length, 0)
+            const totalAmt = fg.sheets.reduce((s, sh) => s + sh.rows.reduce((ss, r) => ss + r.total_amount, 0), 0)
             return (
-              <div key={group.location} className="bg-white rounded-xl border overflow-hidden">
-                <div className="bg-gray-50 border-b px-4 py-3 font-semibold text-gray-700 flex justify-between">
-                  <span>{group.location}</span>
-                  <span className="text-blue-600">{(totalAmount + vat).toLocaleString('vi-VN')} đ (incl. VAT)</span>
+              <div key={fg.fileName} className="bg-white rounded-xl border overflow-hidden">
+                <div className="bg-gray-50 border-b px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-gray-800">{fg.fileName}.xlsx</span>
+                    <span className="ml-3 text-sm text-gray-500">{customer?.name || fg.customerCode}</span>
+                    <span className="ml-2 text-xs text-gray-400">{fg.sheets.length} sheet · {totalRows} dòng</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-blue-600 font-medium text-sm">{(totalAmt * 1.08).toLocaleString('vi-VN')} đ</span>
+                    <button onClick={() => exportFile(fg)} disabled={!!exporting}
+                      className="bg-green-600 text-white px-3 py-1.5 rounded text-xs hover:bg-green-700 disabled:opacity-50">
+                      {exporting === fg.fileName ? 'Đang xuất...' : 'Xuất Excel'}
+                    </button>
+                  </div>
                 </div>
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      {['STT', 'Ngày giao', 'Nội Dung', 'B45↓', 'B45↑', 'B12↓', 'B12↑', 'Gas giao', 'Gas trả', 'Gas TT', 'Đơn giá', 'Thành tiền', 'Ghi chú'].map(h => (
-                        <th key={h} className="text-center px-2 py-2 font-medium text-gray-600 border-r last:border-0">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.rows.map((r, i) => (
-                      <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="px-2 py-1.5 text-center">{i + 1}</td>
-                        <td className="px-2 py-1.5 whitespace-nowrap">{r.delivery_date}</td>
-                        <td className="px-2 py-1.5">{r.location}</td>
-                        <td className="px-2 py-1.5 text-right">{r.b45_delivered || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.b45_returned || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.b12_delivered || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.b12_returned || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.gas_delivered || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.gas_returned || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.gas_paid || ''}</td>
-                        <td className="px-2 py-1.5 text-right">{r.unit_price ? r.unit_price.toLocaleString('vi-VN') : ''}</td>
-                        <td className="px-2 py-1.5 text-right font-medium">{r.total_amount ? r.total_amount.toLocaleString('vi-VN') : ''}</td>
-                        <td className="px-2 py-1.5 text-gray-500">{r.note}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 font-semibold border-t-2">
-                      <td colSpan={3} className="px-2 py-2 text-center">TỔNG</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.b45_delivered, 0) || ''}</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.b45_returned, 0) || ''}</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.b12_delivered, 0) || ''}</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.b12_returned, 0) || ''}</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.gas_delivered, 0)}</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.gas_returned, 0) || ''}</td>
-                      <td className="px-2 py-2 text-right">{group.rows.reduce((s, r) => s + r.gas_paid, 0)}</td>
-                      <td colSpan={3} className="px-2 py-2 text-right">{totalAmount.toLocaleString('vi-VN')}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div className="px-4 py-3 text-xs text-right space-y-1 border-t">
-                  <div>Thuế GTGT (8%): <span className="font-medium">{vat.toLocaleString('vi-VN')} đ</span></div>
-                  <div className="font-semibold text-sm">Tổng cộng (incl. VAT): {(totalAmount + vat).toLocaleString('vi-VN')} đ</div>
-                </div>
+                {fg.sheets.map(sg => (
+                  <div key={sg.sheetName} className="border-b last:border-0">
+                    <div className="px-4 py-2 bg-blue-50 text-xs font-medium text-blue-700">
+                      Sheet: {sg.sheetName} — {sg.locationName} ({sg.rows.length} dòng)
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {['STT','Ngày','Nội Dung','B45↓','B45↑','B12↓','B12↑','Gas giao','Gas TT','Đơn giá','Thành tiền'].map(h=>(
+                            <th key={h} className="text-center px-2 py-1.5 font-medium text-gray-600 border-r last:border-0">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sg.rows.map((r,i)=>(
+                          <tr key={r.id} className="border-t hover:bg-gray-50">
+                            <td className="px-2 py-1.5 text-center">{i+1}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">{r.delivery_date}</td>
+                            <td className="px-2 py-1.5">{sg.locationName}</td>
+                            <td className="px-2 py-1.5 text-right">{r.b45_delivered||''}</td>
+                            <td className="px-2 py-1.5 text-right">{r.b45_returned||''}</td>
+                            <td className="px-2 py-1.5 text-right">{r.b12_delivered||''}</td>
+                            <td className="px-2 py-1.5 text-right">{r.b12_returned||''}</td>
+                            <td className="px-2 py-1.5 text-right">{r.gas_delivered||''}</td>
+                            <td className="px-2 py-1.5 text-right">{r.gas_paid||''}</td>
+                            <td className="px-2 py-1.5 text-right">{r.unit_price?r.unit_price.toLocaleString('vi-VN'):''}</td>
+                            <td className="px-2 py-1.5 text-right font-medium">{r.total_amount?r.total_amount.toLocaleString('vi-VN'):''}</td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 bg-gray-50 font-semibold">
+                          <td colSpan={3} className="px-2 py-1.5 text-center">TỔNG</td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.b45_delivered,0)||''}</td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.b45_returned,0)||''}</td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.b12_delivered,0)||''}</td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.b12_returned,0)||''}</td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.gas_delivered,0)}</td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.gas_paid,0)}</td>
+                          <td></td>
+                          <td className="px-2 py-1.5 text-right">{sg.rows.reduce((s,r)=>s+r.total_amount,0).toLocaleString('vi-VN')}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
               </div>
             )
           })}
