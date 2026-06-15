@@ -7,11 +7,10 @@ type Mapping = {
   input_key: string
   customer_code: string
   output_file_name: string
-  output_sheet_name: string
   output_location_name: string
 }
 
-const empty = { input_key: '', customer_code: '', output_file_name: '', output_sheet_name: 'công nợ', output_location_name: '' }
+const empty = { input_key: '', customer_code: '', output_file_name: '', output_location_name: '' }
 
 export default function MappingsPage() {
   const [mappings, setMappings] = useState<Mapping[]>([])
@@ -54,7 +53,7 @@ export default function MappingsPage() {
 
   function edit(m: Mapping) {
     setEditing(m.id)
-    setForm({ input_key: m.input_key, customer_code: m.customer_code, output_file_name: m.output_file_name, output_sheet_name: m.output_sheet_name, output_location_name: m.output_location_name })
+    setForm({ input_key: m.input_key, customer_code: m.customer_code, output_file_name: m.output_file_name, output_location_name: m.output_location_name })
   }
 
   const filtered = mappings.filter(m =>
@@ -91,13 +90,6 @@ export default function MappingsPage() {
               placeholder="vd: T5_BUI_VAN_BA"
               className="border rounded px-3 py-2 text-sm w-full font-mono" />
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Tên sheet *</label>
-            <input value={form.output_sheet_name}
-              onChange={e => setForm({ ...form, output_sheet_name: e.target.value })}
-              placeholder="vd: công nợ"
-              className="border rounded px-3 py-2 text-sm w-full" />
-          </div>
           <div className="col-span-2">
             <label className="block text-xs text-gray-500 mb-1">Tên địa điểm trong biên bản (Nội Dung) *</label>
             <input value={form.output_location_name}
@@ -126,7 +118,7 @@ export default function MappingsPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              {['Input key (Mã KH)', 'Khách hàng', 'File output', 'Sheet', 'Tên địa điểm', ''].map(h => (
+              {['Input key (Mã KH)', 'Khách hàng', 'File output', 'Tên địa điểm (= tên sheet)', ''].map(h => (
                 <th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>
               ))}
             </tr>
@@ -137,7 +129,6 @@ export default function MappingsPage() {
                 <td className="px-4 py-2.5 font-mono text-xs">{m.input_key}</td>
                 <td className="px-4 py-2.5 text-xs">{m.customer_code}</td>
                 <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{m.output_file_name}</td>
-                <td className="px-4 py-2.5 text-xs text-gray-500">{m.output_sheet_name}</td>
                 <td className="px-4 py-2.5 text-xs">{m.output_location_name}</td>
                 <td className="px-4 py-2.5 flex gap-2 justify-end">
                   <button onClick={() => edit(m)} className="text-blue-600 hover:underline text-xs">Sửa</button>
@@ -145,7 +136,7 @@ export default function MappingsPage() {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Chưa có mapping</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Chưa có mapping</td></tr>}
           </tbody>
         </table>
       </div>
