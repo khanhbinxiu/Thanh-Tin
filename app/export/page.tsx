@@ -54,9 +54,9 @@ export default function ExportPage() {
         fileMap.set(fname, { fileName: fname, customerCode: tx.customer_code, sheets: [] })
       }
       const fg = fileMap.get(fname)!
-      let sg = fg.sheets.find(s => s.sheetName === tx.output_sheet_name)
+      let sg = fg.sheets.find(s => s.sheetName === tx.location)
       if (!sg) {
-        sg = { sheetName: tx.output_sheet_name || 'công nợ', locationName: tx.location, rows: [] }
+        sg = { sheetName: tx.location, locationName: tx.location, rows: [] }
         fg.sheets.push(sg)
       }
       sg.rows.push(tx)
