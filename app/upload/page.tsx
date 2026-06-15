@@ -177,7 +177,9 @@ export default function UploadPage() {
     setImporting(false)
   }
 
-  const unmappedKeys = [...new Set(rows.filter(r => r.status === 'unmapped').map(r => r.input_key))]
+  const unmappedRows = rows.filter(r => r.status === 'unmapped')
+  const unmappedKeys = [...new Set(unmappedRows.map(r => r.input_key))]
+  const unmappedCount = (key: string) => unmappedRows.filter(r => r.input_key === key).length
 
   return (
     <div className="space-y-6">
@@ -221,7 +223,10 @@ export default function UploadPage() {
           <p className="font-medium text-amber-800 mb-2">Các Mã KH chưa có mapping ({unmappedKeys.length}):</p>
           <div className="flex flex-wrap gap-2">
             {unmappedKeys.map(k => (
-              <span key={k} className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs font-mono">{k}</span>
+              <span key={k} className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs font-mono flex items-center gap-1.5">
+                {k}
+                <span className="bg-amber-300 text-amber-900 rounded px-1">{unmappedCount(k)}</span>
+              </span>
             ))}
           </div>
           <a href="/mappings" className="text-blue-600 text-sm mt-2 block hover:underline">→ Vào trang Mapping để thêm</a>
