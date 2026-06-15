@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "thanh-tin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3001,
+      "cwd": "C:\\Users\\Khanh Vu\\Documents\\Claude\\thanh-tin"
+    }
+  ]
+}
