@@ -142,26 +142,47 @@ export default function ExportPage() {
       })
 
       // Data rows from 12
+      const firstDataRow = 12
+      const yellowFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+      const thinBorder: Partial<ExcelJS.Borders> = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
+
       sg.rows.forEach((r, idx) => {
-        const dr = ws.getRow(12 + idx)
-        const vals: (string|number)[] = [
+        const rowNum = firstDataRow + idx
+        const dr = ws.getRow(rowNum)
+        const noPrice = !r.unit_price || r.unit_price === 0
+
+        const vals: (string|number|ExcelJS.CellFormulaValue)[] = [
           idx+1, r.delivery_date, sg.locationName,
           r.b45_delivered||'', r.b45_returned||'',
           r.b12_delivered||'', r.b12_returned||'',
-          r.gas_delivered||'', r.gas_returned||'', r.gas_paid||'',
-          r.unit_price||'', r.total_amount||'', r.note||''
+          r.gas_delivered||'', r.gas_returned||'',
+          { formula: `D${rowNum}*45+F${rowNum}*12-I${rowNum}` } as ExcelJS.CellFormulaValue,
+          r.unit_price||'',
+          { formula: `J${rowNum}*K${rowNum}` } as ExcelJS.CellFormulaValue,
+          r.note||''
         ]
         vals.forEach((v, ci) => {
           const cell = dr.getCell(ci + 1)
           cell.value = v as ExcelJS.CellValue
-          cell.border = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
+          cell.border = thinBorder
           if (ci >= 3) cell.alignment = { horizontal: 'right' }
+          if (noPrice && (ci === 10 || ci === 11)) cell.fill = yellowFill
         })
       })
 
-      // Totals
-      const tRow = ws.getRow(12 + sg.rows.length)
-      ;['','TỔNG','',totals.b45d,totals.b45r,totals.b12d,totals.b12r,totals.gasD,totals.gasR,totals.gasPaid,'',totals.total,''].forEach((v, ci) => {
+      // Totals with SUM formulas
+      const lastDataRow = firstDataRow + sg.rows.length - 1
+      const tRowNum = lastDataRow + 1
+      const tRow = ws.getRow(tRowNum)
+      const sumCols = ['D','E','F','G','H','I','J','L']
+      const tVals: (string|ExcelJS.CellFormulaValue)[] = [
+        '','TỔNG','',
+        ...(['D','E','F','G','H','I','J'].map(c => ({ formula: `SUM(${c}${firstDataRow}:${c}${lastDataRow})` } as ExcelJS.CellFormulaValue))),
+        '',
+        { formula: `SUM(L${firstDataRow}:L${lastDataRow})` } as ExcelJS.CellFormulaValue,
+        ''
+      ]
+      tVals.forEach((v, ci) => {
         const cell = tRow.getCell(ci+1)
         cell.value = v as ExcelJS.CellValue
         cell.font = { bold: true }
@@ -169,13 +190,14 @@ export default function ExportPage() {
         if (ci >= 3) cell.alignment = { horizontal: 'right' }
       })
 
-      const after = 13 + sg.rows.length
+      // Thuế, tổng tiền hàng with formulas
+      const after = tRowNum + 1
       ws.getRow(after).getCell(10).value = 'Thuế GTGT (8%)'
-      ws.getRow(after).getCell(12).value = vat
+      ws.getRow(after).getCell(12).value = { formula: `L${tRowNum}*0.08` } as ExcelJS.CellValue
       ws.getRow(after+1).getCell(10).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
-      ws.getRow(after+1).getCell(12).value = totals.total + vat
+      ws.getRow(after+1).getCell(12).value = { formula: `L${tRowNum}+L${after}` } as ExcelJS.CellValue
       ws.getRow(after+2).getCell(10).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
-      ws.getRow(after+2).getCell(12).value = totals.total + vat
+      ws.getRow(after+2).getCell(12).value = { formula: `L${after+1}` } as ExcelJS.CellValue
 
       const sigRow = after + 5
       ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
