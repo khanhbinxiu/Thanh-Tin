@@ -46,7 +46,18 @@ export default function ExportPage() {
       .order('delivery_date')
     const txs: Transaction[] = data || []
 
-    // Group by output_file_name → output_sheet_name
+    // Load all mappings to know all sheets per file
+    const { data: allMappings } = await supabase.from('location_mappings').select('*')
+    const mappingsByFile = new Map<string, { locationName: string; customerCode: string }[]>()
+    for (const m of (allMappings || [])) {
+      if (!mappingsByFile.has(m.output_file_name)) mappingsByFile.set(m.output_file_name, [])
+      const arr = mappingsByFile.get(m.output_file_name)!
+      if (!arr.find(a => a.locationName === m.output_location_name)) {
+        arr.push({ locationName: m.output_location_name, customerCode: m.customer_code })
+      }
+    }
+
+    // Group by output_file_name → location
     const fileMap = new Map<string, FileGroup>()
     for (const tx of txs) {
       const fname = tx.output_file_name || 'UNMAPPED'
@@ -61,6 +72,18 @@ export default function ExportPage() {
       }
       sg.rows.push(tx)
     }
+
+    // Add empty sheets for mapped locations with no transactions this period
+    for (const [fname, locs] of mappingsByFile) {
+      if (!fileMap.has(fname)) continue
+      const fg = fileMap.get(fname)!
+      for (const loc of locs) {
+        if (!fg.sheets.find(s => s.sheetName === loc.locationName)) {
+          fg.sheets.push({ sheetName: loc.locationName, locationName: loc.locationName, rows: [] })
+        }
+      }
+    }
+
     setFileGroups([...fileMap.values()])
     setLoading(false)
   }
@@ -166,6 +189,7 @@ export default function ExportPage() {
           cell.value = v as ExcelJS.CellValue
           cell.border = thinBorder
           if (ci >= 3) cell.alignment = { horizontal: 'right' }
+          if (ci === 10 || ci === 11) cell.numFmt = '#,##0'
           if (noPrice && (ci === 10 || ci === 11)) cell.fill = yellowFill
         })
       })
@@ -188,6 +212,7 @@ export default function ExportPage() {
         cell.font = { bold: true }
         cell.border = { top:{style:'thin'}, bottom:{style:'double'}, left:{style:'thin'}, right:{style:'thin'} }
         if (ci >= 3) cell.alignment = { horizontal: 'right' }
+        if (ci === 11) cell.numFmt = '#,##0'
       })
 
       // Thuế, tổng tiền hàng with formulas
@@ -199,18 +224,21 @@ export default function ExportPage() {
       ws.getRow(after).getCell(9).fill = lightYellow
       ws.getRow(after).getCell(12).value = { formula: `L${tRowNum}*0.08` } as ExcelJS.CellValue
       ws.getRow(after).getCell(12).fill = lightYellow
+      ws.getRow(after).getCell(12).numFmt = '#,##0'
 
       ws.getRow(after+1).getCell(9).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
       ws.getRow(after+1).getCell(9).font = { bold: true }
       ws.getRow(after+1).getCell(9).fill = lightYellow
       ws.getRow(after+1).getCell(12).value = { formula: `L${tRowNum}+L${after}` } as ExcelJS.CellValue
       ws.getRow(after+1).getCell(12).fill = lightYellow
+      ws.getRow(after+1).getCell(12).numFmt = '#,##0'
 
       ws.getRow(after+2).getCell(9).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
       ws.getRow(after+2).getCell(9).font = { bold: true }
       ws.getRow(after+2).getCell(9).fill = lightYellow
       ws.getRow(after+2).getCell(12).value = { formula: `L${after+1}` } as ExcelJS.CellValue
       ws.getRow(after+2).getCell(12).fill = lightYellow
+      ws.getRow(after+2).getCell(12).numFmt = '#,##0'
 
       const sigRow = after + 5
       ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
