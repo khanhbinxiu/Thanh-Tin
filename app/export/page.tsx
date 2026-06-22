@@ -88,6 +88,251 @@ export default function ExportPage() {
     setLoading(false)
   }
 
+  function buildStandardSheet(ws: ExcelJS.Worksheet, allRows: Transaction[], locationName: string, customer: Customer | undefined, fg: FileGroup, fromDate: Date, toDate: Date) {
+    const thinBorder: Partial<ExcelJS.Borders> = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
+    const yellowFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+    const lightYellow: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFCC' } }
+
+    ws.mergeCells('A1:L1')
+    ws.getCell('A1').value = `${COMPANY_NAME}\n${COMPANY_ADDRESS}`
+    ws.getCell('A1').font = { bold: true, size: 10 }
+    ws.getCell('A1').alignment = { wrapText: true }
+    ws.getRow(1).height = 30
+    ws.getCell('M1').value = 'Tháng:'
+    ws.getCell('N1').value = useCustom ? '' : month
+
+    ws.mergeCells('A2:L2')
+    ws.getCell('A2').value = 'BIÊN BẢN ĐỐI CHIẾU CÔNG NỢ'
+    ws.getCell('A2').font = { bold: true, size: 13 }
+    ws.getCell('A2').alignment = { horizontal: 'center' }
+    ws.getCell('M2').value = 'Năm:'
+    ws.getCell('N2').value = year
+
+    ws.mergeCells('A3:L3')
+    ws.getCell('A3').value = useCustom
+      ? `(${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} - ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()})`
+      : `(THÁNG ${String(month).padStart(2,'0')}/${year})`
+    ws.getCell('A3').alignment = { horizontal: 'center' }
+
+    ws.mergeCells('A5:N5')
+    ws.getCell('A5').value = `KHÁCH HÀNG: ${customer?.name || fg.customerCode}\nĐỊA CHỈ: ${customer?.address || ''}\nMST: ${customer?.tax_code || ''}`
+    ws.getCell('A5').font = { bold: true }
+    ws.getCell('A5').alignment = { wrapText: true }
+    ws.getRow(5).height = 45
+
+    ws.mergeCells('A7:N7')
+    ws.getCell('A7').value = 'Hai bên thống nhất số lượng bên B mua của bên A như sau:'
+    ws.mergeCells('A8:N8')
+    ws.getCell('A8').value = `1. Thời gian giao nhận: Từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
+    ws.mergeCells('A9:N9')
+    ws.getCell('A9').value = '2. Khối lượng hàng hóa theo bảng kê chi tiết:'
+
+    const hdrs = ['STT','Ngày giao','Nội Dung','Bình Giao','Trả vỏ','Bình Giao','Trả vỏ','Gas giao','Gas trả','Gas thanh toán','Đơn giá chưa VAT (vnđ/kg)','Thành Tiền','Ghi chú']
+    const units = ['','','','B45kg','B45kg','B12kg','B12kg','Kg','Kg','Kg','','','']
+    ;[hdrs, units].forEach((arr, ri) => {
+      arr.forEach((v, ci) => {
+        const cell = ws.getRow(10 + ri).getCell(ci + 1)
+        cell.value = v
+        cell.font = { bold: ri === 0 }
+        cell.alignment = { horizontal: 'center', wrapText: true }
+        cell.border = thinBorder
+      })
+    })
+
+    const firstDataRow = 12
+    allRows.forEach((r, idx) => {
+      const rowNum = firstDataRow + idx
+      const dr = ws.getRow(rowNum)
+      const noPrice = !r.unit_price || r.unit_price === 0
+      const rowLocation = r.location || locationName
+      const vals: (string|number|ExcelJS.CellFormulaValue)[] = [
+        idx+1, r.delivery_date, rowLocation,
+        r.b45_delivered||0, r.b45_returned||0,
+        r.b12_delivered||0, r.b12_returned||0,
+        r.gas_delivered||0, r.gas_returned||0,
+        { formula: `D${rowNum}*45+F${rowNum}*12-I${rowNum}` } as ExcelJS.CellFormulaValue,
+        r.unit_price||'',
+        noPrice ? '' : { formula: `J${rowNum}*K${rowNum}` } as ExcelJS.CellFormulaValue,
+        r.note||''
+      ]
+      vals.forEach((v, ci) => {
+        const cell = dr.getCell(ci + 1)
+        cell.value = v as ExcelJS.CellValue
+        cell.border = thinBorder
+        if (ci >= 3) cell.alignment = { horizontal: 'right' }
+        if (ci === 10 || ci === 11) cell.numFmt = '#,##0'
+        if (noPrice && (ci === 10 || ci === 11)) cell.fill = yellowFill
+      })
+    })
+
+    const lastDataRow = firstDataRow + allRows.length - 1
+    const tRowNum = lastDataRow + 1
+    const tRow = ws.getRow(tRowNum)
+    const tVals: (string|ExcelJS.CellFormulaValue)[] = [
+      '','TỔNG','',
+      ...(['D','E','F','G','H','I','J'].map(c => ({ formula: `SUM(${c}${firstDataRow}:${c}${lastDataRow})` } as ExcelJS.CellFormulaValue))),
+      '',
+      { formula: `SUM(L${firstDataRow}:L${lastDataRow})` } as ExcelJS.CellFormulaValue,
+      ''
+    ]
+    tVals.forEach((v, ci) => {
+      const cell = tRow.getCell(ci+1)
+      cell.value = v as ExcelJS.CellValue
+      cell.font = { bold: true }
+      cell.border = { top:{style:'thin'}, bottom:{style:'double'}, left:{style:'thin'}, right:{style:'thin'} }
+      if (ci >= 3) cell.alignment = { horizontal: 'right' }
+      if (ci === 11) cell.numFmt = '#,##0'
+    })
+
+    const after = tRowNum + 1
+    ws.getRow(after).getCell(9).value = 'Thuế GTGT (8%)'
+    ws.getRow(after).getCell(9).font = { bold: true }
+    ws.getRow(after).getCell(9).fill = lightYellow
+    ws.getRow(after).getCell(12).value = { formula: `L${tRowNum}*0.08` } as ExcelJS.CellValue
+    ws.getRow(after).getCell(12).fill = lightYellow
+    ws.getRow(after).getCell(12).numFmt = '#,##0'
+
+    ws.getRow(after+1).getCell(9).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
+    ws.getRow(after+1).getCell(9).font = { bold: true }
+    ws.getRow(after+1).getCell(9).fill = lightYellow
+    ws.getRow(after+1).getCell(12).value = { formula: `L${tRowNum}+L${after}` } as ExcelJS.CellValue
+    ws.getRow(after+1).getCell(12).fill = lightYellow
+    ws.getRow(after+1).getCell(12).numFmt = '#,##0'
+
+    ws.getRow(after+2).getCell(9).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
+    ws.getRow(after+2).getCell(9).font = { bold: true }
+    ws.getRow(after+2).getCell(9).fill = lightYellow
+    ws.getRow(after+2).getCell(12).value = { formula: `L${after+1}` } as ExcelJS.CellValue
+    ws.getRow(after+2).getCell(12).fill = lightYellow
+    ws.getRow(after+2).getCell(12).numFmt = '#,##0'
+
+    const sigRow = after + 5
+    ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
+    ws.getRow(sigRow+1).getCell(2).value = 'Xác nhận của khách hàng'
+    ws.getRow(sigRow+1).getCell(10).value = 'Người lập'
+
+    ws.columns = [
+      {width:5},{width:14},{width:22},{width:8},{width:8},
+      {width:8},{width:8},{width:10},{width:10},{width:16},
+      {width:18},{width:16},{width:20},
+    ]
+  }
+
+  function buildOlive10Sheet(ws: ExcelJS.Worksheet, sheets: SheetGroup[], customer: Customer | undefined, fromDate: Date, toDate: Date) {
+    const thinBorder: Partial<ExcelJS.Borders> = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
+    const numFmt = '#,##0'
+    const periodStr = useCustom
+      ? `${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} - ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
+      : `THÁNG ${String(month).padStart(2,'0')}/${year}`
+
+    ws.mergeCells('A1:J1')
+    ws.getCell('A1').value = `BẢNG KÊ CHI TIẾT`
+    ws.getCell('A1').font = { bold: true, size: 13 }
+    ws.getCell('A1').alignment = { horizontal: 'center' }
+
+    ws.mergeCells('A3:J3')
+    ws.getCell('A3').value = `Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
+
+    ws.mergeCells('A5:J5')
+    ws.getCell('A5').value = `Đơn vị bán hàng: ${COMPANY_NAME}`
+    ws.getCell('A5').font = { bold: true }
+    ws.mergeCells('A6:J6')
+    ws.getCell('A6').value = `Địa chỉ: ${COMPANY_ADDRESS}`
+    ws.mergeCells('A7:J7')
+    ws.getCell('A7').value = 'Mã số thuế: 0317961718'
+
+    ws.mergeCells('A9:J9')
+    ws.getCell('A9').value = `Đơn vị mua hàng: ${customer?.name || ''}`
+    ws.getCell('A9').font = { bold: true }
+    ws.mergeCells('A10:J10')
+    ws.getCell('A10').value = `Địa chỉ: ${customer?.address || ''}`
+    ws.mergeCells('A11:J11')
+    ws.getCell('A11').value = `MST: ${customer?.tax_code || ''}`
+
+    const hdrRow = 13
+    const hdrs = ['Ngày hạch toán','Mã hàng','Tên hàng','Đơn vị tính','Số lượng mua','Đơn giá','Thành tiền trước VAT','VAT 8%','Thành tiền sau VAT','Tên Bếp']
+    hdrs.forEach((h, ci) => {
+      const cell = ws.getRow(hdrRow).getCell(ci+1)
+      cell.value = h
+      cell.font = { bold: true }
+      cell.alignment = { horizontal: 'center', wrapText: true }
+      cell.border = thinBorder
+    })
+
+    let row = hdrRow + 1
+    let grandTotalPre = 0, grandTotalVat = 0, grandTotalPost = 0
+
+    for (const sg of sheets) {
+      if (sg.rows.length === 0) continue
+      for (const r of sg.rows) {
+        const dr = ws.getRow(row)
+        const rn = row
+        dr.getCell(1).value = r.delivery_date
+        dr.getCell(2).value = ''
+        dr.getCell(3).value = 'Khí hoá lỏng (LPG)'
+        dr.getCell(4).value = 'Kg'
+        dr.getCell(5).value = r.gas_paid || 0
+        dr.getCell(5).numFmt = '#,##0.0'
+        dr.getCell(6).value = r.unit_price || ''
+        dr.getCell(6).numFmt = numFmt
+        dr.getCell(7).value = { formula: `E${rn}*F${rn}` } as ExcelJS.CellValue
+        dr.getCell(7).numFmt = numFmt
+        dr.getCell(8).value = { formula: `G${rn}*0.08` } as ExcelJS.CellValue
+        dr.getCell(8).numFmt = numFmt
+        dr.getCell(9).value = { formula: `G${rn}+H${rn}` } as ExcelJS.CellValue
+        dr.getCell(9).numFmt = numFmt
+        dr.getCell(10).value = sg.locationName
+        for (let c = 1; c <= 10; c++) dr.getCell(c).border = thinBorder
+        row++
+      }
+      // Subtotal per bếp
+      const subRow = ws.getRow(row)
+      subRow.getCell(1).value = `Tổng Bếp ${sg.locationName}`
+      subRow.getCell(1).font = { bold: true }
+      const firstBep = row - sg.rows.length
+      subRow.getCell(5).value = { formula: `SUM(E${firstBep}:E${row-1})` } as ExcelJS.CellValue
+      subRow.getCell(5).numFmt = '#,##0.0'
+      subRow.getCell(7).value = { formula: `SUM(G${firstBep}:G${row-1})` } as ExcelJS.CellValue
+      subRow.getCell(7).numFmt = numFmt
+      subRow.getCell(8).value = { formula: `SUM(H${firstBep}:H${row-1})` } as ExcelJS.CellValue
+      subRow.getCell(8).numFmt = numFmt
+      subRow.getCell(9).value = { formula: `SUM(I${firstBep}:I${row-1})` } as ExcelJS.CellValue
+      subRow.getCell(9).numFmt = numFmt
+      for (let c = 1; c <= 10; c++) subRow.getCell(c).border = thinBorder
+      row += 2
+    }
+
+    // Grand total - sum the subtotal rows
+    const gtRow = ws.getRow(row)
+    gtRow.getCell(1).value = 'TỔNG CỘNG'
+    gtRow.getCell(1).font = { bold: true, size: 12 }
+    const subTotalRows: number[] = []
+    let scanRow = hdrRow + 1
+    for (const sg of sheets) {
+      if (sg.rows.length === 0) continue
+      scanRow += sg.rows.length
+      subTotalRows.push(scanRow)
+      scanRow += 2
+    }
+    if (subTotalRows.length > 0) {
+      const sumRef = (col: string) => subTotalRows.map(r => `${col}${r}`).join('+')
+      gtRow.getCell(5).value = { formula: sumRef('E') } as ExcelJS.CellValue
+      gtRow.getCell(7).value = { formula: sumRef('G') } as ExcelJS.CellValue
+      gtRow.getCell(8).value = { formula: sumRef('H') } as ExcelJS.CellValue
+      gtRow.getCell(9).value = { formula: sumRef('I') } as ExcelJS.CellValue
+    }
+    gtRow.getCell(5).numFmt = '#,##0.0'
+    gtRow.getCell(7).numFmt = numFmt
+    gtRow.getCell(8).numFmt = numFmt
+    gtRow.getCell(9).numFmt = numFmt
+    for (let c = 1; c <= 10; c++) { gtRow.getCell(c).border = thinBorder }
+
+    ws.columns = [
+      {width:16},{width:10},{width:22},{width:10},{width:14},
+      {width:16},{width:20},{width:16},{width:20},{width:22},
+    ]
+  }
+
   async function exportFile(fg: FileGroup) {
     const { from, to } = getPeriod()
     const fromDate = new Date(from)
@@ -96,160 +341,17 @@ export default function ExportPage() {
     setExporting(fg.fileName)
 
     const wb = new ExcelJS.Workbook()
+    const isOlive = fg.fileName === 'OLIVE'
 
-    for (const sg of fg.sheets) {
-      const ws = wb.addWorksheet(sg.sheetName.substring(0, 31))
-      const totals = {
-        b45d: sg.rows.reduce((s, r) => s + r.b45_delivered, 0),
-        b45r: sg.rows.reduce((s, r) => s + r.b45_returned, 0),
-        b12d: sg.rows.reduce((s, r) => s + r.b12_delivered, 0),
-        b12r: sg.rows.reduce((s, r) => s + r.b12_returned, 0),
-        gasD: sg.rows.reduce((s, r) => s + r.gas_delivered, 0),
-        gasR: sg.rows.reduce((s, r) => s + r.gas_returned, 0),
-        gasPaid: sg.rows.reduce((s, r) => s + r.gas_paid, 0),
-        total: sg.rows.reduce((s, r) => s + r.total_amount, 0),
+    if (isOlive) {
+      // Olive: "10%" sheet grouped by bếp + "Chi tiết" sheet all rows together
+      buildOlive10Sheet(wb.addWorksheet('10%'), fg.sheets, customer, fromDate, toDate)
+      const allRows = fg.sheets.flatMap(s => s.rows).sort((a, b) => a.delivery_date.localeCompare(b.delivery_date))
+      buildStandardSheet(wb.addWorksheet('Chi tiết'), allRows, '', customer, fg, fromDate, toDate)
+    } else {
+      for (const sg of fg.sheets) {
+        buildStandardSheet(wb.addWorksheet(sg.sheetName.substring(0, 31)), sg.rows, sg.locationName, customer, fg, fromDate, toDate)
       }
-      const vat = totals.total * 0.08
-
-      // Row 1: Company header + Tháng
-      ws.mergeCells('A1:L1')
-      ws.getCell('A1').value = `${COMPANY_NAME}\n${COMPANY_ADDRESS}`
-      ws.getCell('A1').font = { bold: true, size: 10 }
-      ws.getCell('A1').alignment = { wrapText: true }
-      ws.getRow(1).height = 30
-      ws.getCell('M1').value = 'Tháng:'
-      ws.getCell('N1').value = useCustom ? '' : month
-
-      // Row 2: Title + Năm
-      ws.mergeCells('A2:L2')
-      ws.getCell('A2').value = 'BIÊN BẢN ĐỐI CHIẾU CÔNG NỢ'
-      ws.getCell('A2').font = { bold: true, size: 13 }
-      ws.getCell('A2').alignment = { horizontal: 'center' }
-      ws.getCell('M2').value = 'Năm:'
-      ws.getCell('N2').value = year
-
-      // Row 3
-      ws.mergeCells('A3:L3')
-      ws.getCell('A3').value = useCustom
-        ? `(${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} - ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()})`
-        : `(THÁNG ${String(month).padStart(2,'0')}/${year})`
-      ws.getCell('A3').alignment = { horizontal: 'center' }
-
-      // Row 5: Customer info
-      ws.mergeCells('A5:N5')
-      ws.getCell('A5').value = `KHÁCH HÀNG: ${customer?.name || fg.customerCode}\nĐỊA CHỈ: ${customer?.address || ''}\nMST: ${customer?.tax_code || ''}`
-      ws.getCell('A5').font = { bold: true }
-      ws.getCell('A5').alignment = { wrapText: true }
-      ws.getRow(5).height = 45
-
-      ws.mergeCells('A7:N7')
-      ws.getCell('A7').value = 'Hai bên thống nhất số lượng bên B mua của bên A như sau:'
-
-      ws.mergeCells('A8:N8')
-      ws.getCell('A8').value = `1. Thời gian giao nhận: Từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
-
-      ws.mergeCells('A9:N9')
-      ws.getCell('A9').value = '2. Khối lượng hàng hóa theo bảng kê chi tiết:'
-
-      // Table headers row 10 & 11
-      const hdrs = ['STT','Ngày giao','Nội Dung','Bình Giao','Trả vỏ','Bình Giao','Trả vỏ','Gas giao','Gas trả','Gas thanh toán','Đơn giá chưa VAT (vnđ/kg)','Thành Tiền','Ghi chú']
-      const units = ['','','','B45kg','B45kg','B12kg','B12kg','Kg','Kg','Kg','','','']
-      ;[hdrs, units].forEach((arr, ri) => {
-        arr.forEach((v, ci) => {
-          const cell = ws.getRow(10 + ri).getCell(ci + 1)
-          cell.value = v
-          cell.font = { bold: ri === 0 }
-          cell.alignment = { horizontal: 'center', wrapText: true }
-          cell.border = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
-        })
-      })
-
-      // Data rows from 12
-      const firstDataRow = 12
-      const yellowFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-      const thinBorder: Partial<ExcelJS.Borders> = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
-
-      sg.rows.forEach((r, idx) => {
-        const rowNum = firstDataRow + idx
-        const dr = ws.getRow(rowNum)
-        const noPrice = !r.unit_price || r.unit_price === 0
-
-        const vals: (string|number|ExcelJS.CellFormulaValue)[] = [
-          idx+1, r.delivery_date, sg.locationName,
-          r.b45_delivered||0, r.b45_returned||0,
-          r.b12_delivered||0, r.b12_returned||0,
-          r.gas_delivered||0, r.gas_returned||0,
-          { formula: `D${rowNum}*45+F${rowNum}*12-I${rowNum}` } as ExcelJS.CellFormulaValue,
-          r.unit_price||'',
-          noPrice ? '' : { formula: `J${rowNum}*K${rowNum}` } as ExcelJS.CellFormulaValue,
-          r.note||''
-        ]
-        vals.forEach((v, ci) => {
-          const cell = dr.getCell(ci + 1)
-          cell.value = v as ExcelJS.CellValue
-          cell.border = thinBorder
-          if (ci >= 3) cell.alignment = { horizontal: 'right' }
-          if (ci === 10 || ci === 11) cell.numFmt = '#,##0'
-          if (noPrice && (ci === 10 || ci === 11)) cell.fill = yellowFill
-        })
-      })
-
-      // Totals with SUM formulas
-      const lastDataRow = firstDataRow + sg.rows.length - 1
-      const tRowNum = lastDataRow + 1
-      const tRow = ws.getRow(tRowNum)
-      const sumCols = ['D','E','F','G','H','I','J','L']
-      const tVals: (string|ExcelJS.CellFormulaValue)[] = [
-        '','TỔNG','',
-        ...(['D','E','F','G','H','I','J'].map(c => ({ formula: `SUM(${c}${firstDataRow}:${c}${lastDataRow})` } as ExcelJS.CellFormulaValue))),
-        '',
-        { formula: `SUM(L${firstDataRow}:L${lastDataRow})` } as ExcelJS.CellFormulaValue,
-        ''
-      ]
-      tVals.forEach((v, ci) => {
-        const cell = tRow.getCell(ci+1)
-        cell.value = v as ExcelJS.CellValue
-        cell.font = { bold: true }
-        cell.border = { top:{style:'thin'}, bottom:{style:'double'}, left:{style:'thin'}, right:{style:'thin'} }
-        if (ci >= 3) cell.alignment = { horizontal: 'right' }
-        if (ci === 11) cell.numFmt = '#,##0'
-      })
-
-      // Thuế, tổng tiền hàng with formulas
-      const after = tRowNum + 1
-      const lightYellow: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFCC' } }
-
-      ws.getRow(after).getCell(9).value = 'Thuế GTGT (8%)'
-      ws.getRow(after).getCell(9).font = { bold: true }
-      ws.getRow(after).getCell(9).fill = lightYellow
-      ws.getRow(after).getCell(12).value = { formula: `L${tRowNum}*0.08` } as ExcelJS.CellValue
-      ws.getRow(after).getCell(12).fill = lightYellow
-      ws.getRow(after).getCell(12).numFmt = '#,##0'
-
-      ws.getRow(after+1).getCell(9).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
-      ws.getRow(after+1).getCell(9).font = { bold: true }
-      ws.getRow(after+1).getCell(9).fill = lightYellow
-      ws.getRow(after+1).getCell(12).value = { formula: `L${tRowNum}+L${after}` } as ExcelJS.CellValue
-      ws.getRow(after+1).getCell(12).fill = lightYellow
-      ws.getRow(after+1).getCell(12).numFmt = '#,##0'
-
-      ws.getRow(after+2).getCell(9).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
-      ws.getRow(after+2).getCell(9).font = { bold: true }
-      ws.getRow(after+2).getCell(9).fill = lightYellow
-      ws.getRow(after+2).getCell(12).value = { formula: `L${after+1}` } as ExcelJS.CellValue
-      ws.getRow(after+2).getCell(12).fill = lightYellow
-      ws.getRow(after+2).getCell(12).numFmt = '#,##0'
-
-      const sigRow = after + 5
-      ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
-      ws.getRow(sigRow+1).getCell(2).value = 'Xác nhận của khách hàng'
-      ws.getRow(sigRow+1).getCell(10).value = 'Người lập'
-
-      ws.columns = [
-        {width:5},{width:14},{width:22},{width:8},{width:8},
-        {width:8},{width:8},{width:10},{width:10},{width:16},
-        {width:18},{width:16},{width:20},
-      ]
     }
 
     const buf = await wb.xlsx.writeBuffer()
