@@ -221,6 +221,7 @@ export default function ExportPage() {
 
   function buildOlive10Sheet(ws: ExcelJS.Worksheet, sheets: SheetGroup[], customer: Customer | undefined, fromDate: Date, toDate: Date) {
     const thinBorder: Partial<ExcelJS.Borders> = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} }
+    const yellowFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
     const numFmt = '#,##0'
     const periodStr = useCustom
       ? `${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} - ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
@@ -271,16 +272,18 @@ export default function ExportPage() {
         dr.getCell(1).value = r.delivery_date
         dr.getCell(2).value = 'Khí hoá lỏng (LPG)'
         dr.getCell(3).value = 'Kg'
+        const noPrice = !r.unit_price || r.unit_price === 0
         dr.getCell(4).value = r.gas_paid || 0
         dr.getCell(4).numFmt = '#,##0.0'
-        dr.getCell(5).value = r.unit_price || ''
+        dr.getCell(5).value = r.unit_price || 0
         dr.getCell(5).numFmt = numFmt
-        dr.getCell(6).value = { formula: `D${rn}*E${rn}` } as ExcelJS.CellValue
+        dr.getCell(6).value = noPrice ? 0 : { formula: `D${rn}*E${rn}` } as ExcelJS.CellValue
         dr.getCell(6).numFmt = numFmt
-        dr.getCell(7).value = { formula: `F${rn}*0.08` } as ExcelJS.CellValue
+        dr.getCell(7).value = noPrice ? 0 : { formula: `F${rn}*0.08` } as ExcelJS.CellValue
         dr.getCell(7).numFmt = numFmt
-        dr.getCell(8).value = { formula: `F${rn}+G${rn}` } as ExcelJS.CellValue
+        dr.getCell(8).value = noPrice ? 0 : { formula: `F${rn}+G${rn}` } as ExcelJS.CellValue
         dr.getCell(8).numFmt = numFmt
+        if (noPrice) { for (let c = 5; c <= 8; c++) dr.getCell(c).fill = yellowFill }
         dr.getCell(9).value = sg.locationName
         for (let c = 1; c <= 9; c++) dr.getCell(c).border = thinBorder
         row++
