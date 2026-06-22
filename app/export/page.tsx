@@ -73,9 +73,10 @@ export default function ExportPage() {
       sg.rows.push(tx)
     }
 
-    // Add empty sheets for mapped locations with no transactions this period
+    // Only add empty sheets for multi-location files
+    const multiLocationFiles = new Set(['THIEN_HA', 'E_VIET', 'OLIVE', 'BLUESTAR'])
     for (const [fname, locs] of mappingsByFile) {
-      if (!fileMap.has(fname)) continue
+      if (!fileMap.has(fname) || !multiLocationFiles.has(fname)) continue
       const fg = fileMap.get(fname)!
       for (const loc of locs) {
         if (!fg.sheets.find(s => s.sheetName === loc.locationName)) {
@@ -165,14 +166,14 @@ export default function ExportPage() {
       })
     })
 
-    const lastDataRow = firstDataRow + allRows.length - 1
-    const tRowNum = lastDataRow + 1
+    const lastDataRow = Math.max(firstDataRow, firstDataRow + allRows.length - 1)
+    const tRowNum = firstDataRow + Math.max(allRows.length, 1)
     const tRow = ws.getRow(tRowNum)
-    const tVals: (string|ExcelJS.CellFormulaValue)[] = [
+    const tVals: (string|number|ExcelJS.CellFormulaValue)[] = [
       '','TỔNG','',
-      ...(['D','E','F','G','H','I','J'].map(c => ({ formula: `SUM(${c}${firstDataRow}:${c}${lastDataRow})` } as ExcelJS.CellFormulaValue))),
+      ...(['D','E','F','G','H','I','J'].map(c => (allRows.length > 0 ? { formula: `SUM(${c}${firstDataRow}:${c}${lastDataRow})` } as ExcelJS.CellFormulaValue : 0))),
       '',
-      { formula: `SUM(L${firstDataRow}:L${lastDataRow})` } as ExcelJS.CellFormulaValue,
+      allRows.length > 0 ? { formula: `SUM(L${firstDataRow}:L${lastDataRow})` } as ExcelJS.CellFormulaValue : 0,
       ''
     ]
     tVals.forEach((v, ci) => {
@@ -367,7 +368,12 @@ export default function ExportPage() {
 
   async function exportAll() {
     for (const fg of fileGroups) {
-      await exportFile(fg)
+      try {
+        await exportFile(fg)
+        await new Promise(r => setTimeout(r, 500))
+      } catch (e) {
+        console.error('Export error for', fg.fileName, e)
+      }
     }
   }
 
