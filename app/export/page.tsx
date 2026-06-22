@@ -153,9 +153,9 @@ export default function ExportPage() {
 
         const vals: (string|number|ExcelJS.CellFormulaValue)[] = [
           idx+1, r.delivery_date, sg.locationName,
-          r.b45_delivered||'', r.b45_returned||'',
-          r.b12_delivered||'', r.b12_returned||'',
-          r.gas_delivered||'', r.gas_returned||'',
+          r.b45_delivered||0, r.b45_returned||0,
+          r.b12_delivered||0, r.b12_returned||0,
+          r.gas_delivered||0, r.gas_returned||0,
           { formula: `D${rowNum}*45+F${rowNum}*12-I${rowNum}` } as ExcelJS.CellFormulaValue,
           r.unit_price||'',
           { formula: `J${rowNum}*K${rowNum}` } as ExcelJS.CellFormulaValue,
@@ -192,16 +192,29 @@ export default function ExportPage() {
 
       // Thuế, tổng tiền hàng with formulas
       const after = tRowNum + 1
-      ws.getRow(after).getCell(10).value = 'Thuế GTGT (8%)'
+      const lightYellow: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFCC' } }
+
+      ws.getRow(after).getCell(9).value = 'Thuế GTGT (8%)'
+      ws.getRow(after).getCell(9).font = { bold: true }
+      ws.getRow(after).getCell(9).fill = lightYellow
       ws.getRow(after).getCell(12).value = { formula: `L${tRowNum}*0.08` } as ExcelJS.CellValue
-      ws.getRow(after+1).getCell(10).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
+      ws.getRow(after).getCell(12).fill = lightYellow
+
+      ws.getRow(after+1).getCell(9).value = 'Tổng tiền hàng (bao gồm GTGT 8%) là:'
+      ws.getRow(after+1).getCell(9).font = { bold: true }
+      ws.getRow(after+1).getCell(9).fill = lightYellow
       ws.getRow(after+1).getCell(12).value = { formula: `L${tRowNum}+L${after}` } as ExcelJS.CellValue
-      ws.getRow(after+2).getCell(10).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
+      ws.getRow(after+1).getCell(12).fill = lightYellow
+
+      ws.getRow(after+2).getCell(9).value = `Tổng số tiền nợ tính từ ${fromDate.getDate()}/${fromDate.getMonth()+1}/${fromDate.getFullYear()} đến ${toDate.getDate()}/${toDate.getMonth()+1}/${toDate.getFullYear()}`
+      ws.getRow(after+2).getCell(9).font = { bold: true }
+      ws.getRow(after+2).getCell(9).fill = lightYellow
       ws.getRow(after+2).getCell(12).value = { formula: `L${after+1}` } as ExcelJS.CellValue
+      ws.getRow(after+2).getCell(12).fill = lightYellow
 
       const sigRow = after + 5
       ws.getRow(sigRow).getCell(10).value = `TP Hồ Chí Minh, Ngày ${toDate.getDate()} tháng ${toDate.getMonth()+1} năm ${toDate.getFullYear()}`
-      ws.getRow(sigRow+1).getCell(1).value = 'Xác nhận của khách hàng'
+      ws.getRow(sigRow+1).getCell(2).value = 'Xác nhận của khách hàng'
       ws.getRow(sigRow+1).getCell(10).value = 'Người lập'
 
       ws.columns = [
