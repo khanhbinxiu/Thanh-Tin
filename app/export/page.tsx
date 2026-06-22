@@ -158,7 +158,7 @@ export default function ExportPage() {
           r.gas_delivered||0, r.gas_returned||0,
           { formula: `D${rowNum}*45+F${rowNum}*12-I${rowNum}` } as ExcelJS.CellFormulaValue,
           r.unit_price||'',
-          { formula: `J${rowNum}*K${rowNum}` } as ExcelJS.CellFormulaValue,
+          noPrice ? '' : { formula: `J${rowNum}*K${rowNum}` } as ExcelJS.CellFormulaValue,
           r.note||''
         ]
         vals.forEach((v, ci) => {
