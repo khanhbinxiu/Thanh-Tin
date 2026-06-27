@@ -10,6 +10,7 @@ const links = [
   { href: '/manual', label: 'Nhập tay' },
   { href: '/prices', label: 'Nhập giá' },
   { href: '/export', label: 'Xuất biên bản' },
+  { href: '/quote', label: 'Báo giá' },
   { href: '/review', label: 'Xem dữ liệu' },
 ]
 
