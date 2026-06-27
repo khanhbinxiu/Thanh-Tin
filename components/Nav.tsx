@@ -7,6 +7,7 @@ const links = [
   { href: '/customers', label: 'Khách hàng' },
   { href: '/mappings', label: 'Mapping' },
   { href: '/upload', label: 'Upload Excel' },
+  { href: '/manual', label: 'Nhập tay' },
   { href: '/prices', label: 'Nhập giá' },
   { href: '/export', label: 'Xuất biên bản' },
   { href: '/review', label: 'Xem dữ liệu' },
