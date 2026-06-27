@@ -163,6 +163,7 @@ export default function ExportPage() {
         cell.value = v as ExcelJS.CellValue
         cell.border = thinBorder
         if (ci >= 3) cell.alignment = { horizontal: 'right' }
+        if (ci === 8 || ci === 9) cell.numFmt = '#,##0.0'
         if (ci === 10 || ci === 11) cell.numFmt = '#,##0'
         if (noPrice && (ci === 10 || ci === 11)) cell.fill = yellowFill
       })
