@@ -39,7 +39,7 @@ export default function MappingsPage() {
     if (editing) {
       await supabase.from('location_mappings').update(form).eq('id', editing)
     } else {
-      const { error } = await supabase.from('location_mappings').insert(form)
+      const { error } = await supabase.from('location_mappings').insert({ ...form, output_sheet_name: 'công nợ' })
       if (error) { setMsg('Input key đã tồn tại hoặc lỗi: ' + error.message); return }
     }
     setForm(empty); setEditing(null); load()
