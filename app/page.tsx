@@ -18,40 +18,38 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const dateFromRef = useRef(dateFrom)
-  const dateToRef = useRef(dateTo)
-  dateFromRef.current = dateFrom
-  dateToRef.current = dateTo
+  const [loadKey, setLoadKey] = useState(0)
 
-  async function load() {
-    setLoading(true)
-    const { data: txs } = await supabase.from('transactions')
-      .select('delivery_date, gas_delivered, gas_paid, total_amount')
-      .gte('delivery_date', dateFromRef.current)
-      .lte('delivery_date', dateToRef.current)
+  useEffect(() => {
+    async function doLoad() {
+      setLoading(true)
+      const { data: txs } = await supabase.from('transactions')
+        .select('delivery_date, gas_delivered, gas_paid, total_amount')
+        .gte('delivery_date', dateFrom)
+        .lte('delivery_date', dateTo)
 
-    const grouped = new Map<string, MonthRow>()
-    for (const tx of (txs || [])) {
-      const [y, m] = tx.delivery_date.split('-')
-      const key = `${y}-${m}`
-      const label = `T${parseInt(m)}/${y}`
-      if (!grouped.has(key)) {
-        grouped.set(key, { label, deliveries: 0, gasDelivered: 0, gasPaid: 0, revenue: 0, revenueVat: 0 })
+      const grouped = new Map<string, MonthRow>()
+      for (const tx of (txs || [])) {
+        const [y, m] = tx.delivery_date.split('-')
+        const key = `${y}-${m}`
+        const label = `T${parseInt(m)}/${y}`
+        if (!grouped.has(key)) {
+          grouped.set(key, { label, deliveries: 0, gasDelivered: 0, gasPaid: 0, revenue: 0, revenueVat: 0 })
+        }
+        const row = grouped.get(key)!
+        row.deliveries++
+        row.gasDelivered += tx.gas_delivered || 0
+        row.gasPaid += tx.gas_paid || 0
+        row.revenue += tx.total_amount || 0
+        row.revenueVat += (tx.total_amount || 0) * 1.08
       }
-      const row = grouped.get(key)!
-      row.deliveries++
-      row.gasDelivered += tx.gas_delivered || 0
-      row.gasPaid += tx.gas_paid || 0
-      row.revenue += tx.total_amount || 0
-      row.revenueVat += (tx.total_amount || 0) * 1.08
+
+      const sorted = [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(e => e[1])
+      setData(sorted)
+      setLoading(false)
     }
-
-    const sorted = [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(e => e[1])
-    setData(sorted)
-    setLoading(false)
-  }
-
-  useEffect(() => { load() }, [])
+    doLoad()
+  }, [loadKey])
 
   useEffect(() => {
     if (!canvasRef.current || data.length === 0) return
@@ -147,7 +145,7 @@ export default function Home() {
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
             className="border rounded px-3 py-2 text-sm" />
         </div>
-        <button onClick={load} disabled={loading}
+        <button onClick={() => setLoadKey(k => k + 1)} disabled={loading}
           className="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
           {loading ? 'Đang tải...' : 'Xem'}
         </button>
