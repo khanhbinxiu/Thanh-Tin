@@ -78,7 +78,8 @@ export default function ManualPage() {
       const date = `${year}-${String(month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
       const gp = gasPaid(r)
       const total = gp * r.unit_price
-      const hash = crypto.createHash('md5').update(`${date}|${key}|${r.gas_delivered}|${total}`).digest('hex')
+      const gasDelivered = r.b45_delivered * 45 + r.b12_delivered * 12
+      const hash = crypto.createHash('md5').update(`${date}|${key}|${gasDelivered}|${total}`).digest('hex')
       return {
         input_key: key,
         delivery_date: date,
@@ -91,7 +92,7 @@ export default function ManualPage() {
         b45_returned: r.b45_returned,
         b12_delivered: r.b12_delivered,
         b12_returned: r.b12_returned,
-        gas_delivered: r.gas_delivered,
+        gas_delivered: gasDelivered,
         gas_returned: r.gas_returned,
         gas_paid: gp,
         unit_price: r.unit_price,
@@ -205,10 +206,8 @@ export default function ManualPage() {
                       onChange={e => updateRow(i, 'b12_returned', Number(e.target.value))}
                       className="border rounded px-2 py-1.5 text-sm w-14 text-right" />
                   </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" value={r.gas_delivered || ''}
-                      onChange={e => updateRow(i, 'gas_delivered', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-16 text-right" />
+                  <td className="px-2 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
+                    {(r.b45_delivered * 45 + r.b12_delivered * 12) || ''}
                   </td>
                   <td className="px-1 py-1.5">
                     <input type="number" step="0.1" value={r.gas_returned || ''}
