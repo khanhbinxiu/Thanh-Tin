@@ -53,6 +53,14 @@ export default function ManualPage() {
   function addRow() {
     const last = rows[rows.length - 1]
     setRows([...rows, { ...emptyRow(), day: last.day, pic: last.pic }])
+    setTimeout(() => {
+      const inputs = document.querySelectorAll<HTMLInputElement>('table input[list="input-keys"]')
+      inputs[inputs.length - 1]?.focus()
+    }, 50)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') { e.preventDefault(); addRow() }
   }
 
   function removeRow(idx: number) {
@@ -174,37 +182,37 @@ export default function ManualPage() {
                   <td className="px-1 py-1.5">
                     <input type="number" min={1} max={31} value={r.day}
                       onChange={e => updateRow(i, 'day', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-center" />
+                      className="border rounded px-2 py-1.5 text-sm w-14 text-center" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <input list="input-keys" value={r.input_key}
                       onChange={e => updateRow(i, 'input_key', e.target.value.toLowerCase())}
                       placeholder="Chọn/nhập"
-                      className="border rounded px-2 py-1.5 text-sm w-40" />
+                      className="border rounded px-2 py-1.5 text-sm w-40" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <input value={r.pic} onChange={e => updateRow(i, 'pic', e.target.value)}
-                      className="border rounded px-2 py-1.5 text-sm w-16" />
+                      className="border rounded px-2 py-1.5 text-sm w-16" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <input type="number" value={r.b45_delivered || ''}
                       onChange={e => updateRow(i, 'b45_delivered', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" />
+                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <input type="number" value={r.b45_returned || ''}
                       onChange={e => updateRow(i, 'b45_returned', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" />
+                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <input type="number" value={r.b12_delivered || ''}
                       onChange={e => updateRow(i, 'b12_delivered', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" />
+                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <input type="number" value={r.b12_returned || ''}
                       onChange={e => updateRow(i, 'b12_returned', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" />
+                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-2 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
                     {(r.b45_delivered * 45 + r.b12_delivered * 12) || ''}
@@ -212,7 +220,7 @@ export default function ManualPage() {
                   <td className="px-1 py-1.5">
                     <input type="number" step="0.1" value={r.gas_returned || ''}
                       onChange={e => updateRow(i, 'gas_returned', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-16 text-right" />
+                      className="border rounded px-2 py-1.5 text-sm w-16 text-right" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-2 py-1.5 text-right font-medium text-blue-600 whitespace-nowrap">
                     {gp > 0 ? gp.toFixed(1) : ''}
@@ -220,14 +228,14 @@ export default function ManualPage() {
                   <td className="px-1 py-1.5">
                     <input type="number" value={r.unit_price || ''}
                       onChange={e => updateRow(i, 'unit_price', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-20 text-right" />
+                      className="border rounded px-2 py-1.5 text-sm w-20 text-right" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-2 py-1.5 text-right font-medium whitespace-nowrap">
                     {total > 0 ? total.toLocaleString('vi-VN') : ''}
                   </td>
                   <td className="px-1 py-1.5">
                     <input value={r.note} onChange={e => updateRow(i, 'note', e.target.value)}
-                      className="border rounded px-2 py-1.5 text-sm w-24" />
+                      className="border rounded px-2 py-1.5 text-sm w-24" onKeyDown={handleKeyDown} />
                   </td>
                   <td className="px-1 py-1.5">
                     <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600 text-lg px-1"
