@@ -306,10 +306,30 @@ export default function QuotePage() {
       }],
     })
 
+    // Auto-update unit_price for this customer's transactions in this month
+    const lastDay = new Date(year, month, 0).getDate()
+    const from = `${year}-${monthStr}-01`
+    const to = `${year}-${monthStr}-${lastDay}`
+    const { data: txs } = await supabase.from('transactions')
+      .select('id, b45_delivered, b12_delivered, gas_returned')
+      .eq('customer_code', customerCode)
+      .gte('delivery_date', from)
+      .lte('delivery_date', to)
+    let updated = 0
+    for (const tx of (txs || [])) {
+      const gasPaid = tx.b45_delivered * 45 + tx.b12_delivered * 12 - (tx.gas_returned || 0)
+      await supabase.from('transactions').update({
+        unit_price: priceNum,
+        total_amount: gasPaid * priceNum,
+      }).eq('id', tx.id)
+      updated++
+    }
+
     const blob = await Packer.toBlob(doc)
     const customerName = customer.name.replace(/[^a-zA-Z0-9À-ỹ\s]/g, '').replace(/\s+/g, '_').toUpperCase()
     saveAs(blob, `THANH_TIN_${customerName}_${monthStr}.${year}.docx`)
     setGenerating(false)
+    if (updated > 0) alert(`Đã cập nhật giá ${formatPrice(priceNum)} cho ${updated} giao dịch của ${customer.name} tháng ${month}/${year}`)
   }
 
   const customer = customers.find(c => c.code === customerCode)

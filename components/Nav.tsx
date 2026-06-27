@@ -6,11 +6,10 @@ const links = [
   { href: '/', label: 'Tổng quan' },
   { href: '/customers', label: 'Khách hàng' },
   { href: '/mappings', label: 'Mapping' },
-  { href: '/upload', label: 'Upload Excel' },
   { href: '/manual', label: 'Nhập tay' },
   { href: '/prices', label: 'Nhập giá' },
   { href: '/export', label: 'Xuất biên bản' },
-  { href: '/quote', label: 'Báo giá' },
+  { href: '/quote', label: 'Xuất báo giá' },
   { href: '/review', label: 'Xem dữ liệu' },
 ]
 
