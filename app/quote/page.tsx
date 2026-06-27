@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase, Customer } from '@/lib/supabase'
-import { Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun, Header } from 'docx'
+import { Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun, Header, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx'
 import { saveAs } from 'file-saver'
 
 function formatPrice(n: number) {
@@ -51,30 +51,55 @@ export default function QuotePage() {
         headers: {
           default: new Header({
             children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new ImageRun({ data: logoData, transformation: { width: 100, height: 100 }, type: 'jpg' }),
+              new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                borders: { top: {style:BorderStyle.NONE}, bottom: {style:BorderStyle.NONE}, left: {style:BorderStyle.NONE}, right: {style:BorderStyle.NONE}, insideHorizontal: {style:BorderStyle.NONE}, insideVertical: {style:BorderStyle.NONE} },
+                rows: [
+                  new TableRow({
+                    children: [
+                      new TableCell({
+                        width: { size: 20, type: WidthType.PERCENTAGE },
+                        verticalAlign: 'center' as never,
+                        children: [
+                          new Paragraph({
+                            children: [
+                              new ImageRun({ data: logoData, transformation: { width: 80, height: 80 }, type: 'jpg' }),
+                            ],
+                          }),
+                        ],
+                      }),
+                      new TableCell({
+                        width: { size: 80, type: WidthType.PERCENTAGE },
+                        children: [
+                          new Paragraph({
+                            alignment: AlignmentType.CENTER,
+                            children: [
+                              new TextRun({ text: 'CÔNG TY TNHH THÀNH TÍN LBG', bold: true, size: 28, font }),
+                            ],
+                          }),
+                          new Paragraph({
+                            alignment: AlignmentType.CENTER,
+                            children: [
+                              new TextRun({ text: 'Trụ sở: 115/22/60 Bis Nguyễn Du, Phường Bến Thành, TP.HCM', size: 20, font }),
+                            ],
+                          }),
+                          new Paragraph({
+                            alignment: AlignmentType.CENTER,
+                            children: [
+                              new TextRun({ text: 'Email: thanhtinlpg@gmail.com', size: 20, font }),
+                              new TextRun({ text: ' Điện thoại: 092.555.84.84', size: 20, font }),
+                            ],
+                          }),
+                        ],
+                      }),
+                    ],
+                  }),
                 ],
               }),
               new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({ text: 'CÔNG TY TNHH TM DV THÀNH TÍN LBG', bold: true, size: 22, font }),
-                ],
-              }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({ text: '115/22/60 Bis, Đường Nguyễn Du, Phường Bến Thành, TP Hồ Chí Minh', size: 18, font }),
-                ],
-              }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
                 spacing: { after: 200 },
-                children: [
-                  new TextRun({ text: 'MST: 0317961718 | ĐT: 0909.123.456', size: 18, font }),
-                ],
+                border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '000000' } },
+                children: [],
               }),
             ],
           }),
@@ -225,43 +250,56 @@ export default function QuotePage() {
             ],
           }),
 
-          // Nơi nhận + Chữ ký
-          new Paragraph({
-            spacing: { after: 50 },
-            children: [
-              new TextRun({ text: 'Nơi nhận:', bold: true, italics: true, size: 20, font }),
-              new TextRun({ text: '                                                                              ', size: 20, font }),
-              new TextRun({ text: 'CÔNG TY TNHH TM DV THÀNH TÍN LBG', bold: true, size: 22, font }),
-            ],
-          }),
-
-          new Paragraph({
-            spacing: { after: 30 },
-            children: [
-              new TextRun({ text: '-   Như trên;', size: 20, font }),
-            ],
-          }),
-
-          new Paragraph({
-            spacing: { after: 100 },
-            children: [
-              new TextRun({ text: '-   Lưu VT, KHKD, TCKT. HH01.', size: 20, font }),
-            ],
-          }),
-
-          // Signature image
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-              new ImageRun({ data: sigData, transformation: { width: 250, height: 200 }, type: 'png' }),
-            ],
-          }),
-
-          // Stamp
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-              new ImageRun({ data: stampData, transformation: { width: 150, height: 100 }, type: 'png' }),
+          // Nơi nhận + Chữ ký side by side
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: { top:{style:BorderStyle.NONE}, bottom:{style:BorderStyle.NONE}, left:{style:BorderStyle.NONE}, right:{style:BorderStyle.NONE}, insideHorizontal:{style:BorderStyle.NONE}, insideVertical:{style:BorderStyle.NONE} },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({
+                    width: { size: 45, type: WidthType.PERCENTAGE },
+                    children: [
+                      new Paragraph({
+                        spacing: { after: 50 },
+                        children: [
+                          new TextRun({ text: 'Nơi nhận:', bold: true, italics: true, size: 20, font }),
+                        ],
+                      }),
+                      new Paragraph({
+                        spacing: { after: 30 },
+                        children: [
+                          new TextRun({ text: '-   Như trên;', size: 20, font }),
+                        ],
+                      }),
+                      new Paragraph({
+                        children: [
+                          new TextRun({ text: '-   Lưu VT, KHKD, TCKT. HH01.', size: 20, font }),
+                        ],
+                      }),
+                    ],
+                  }),
+                  new TableCell({
+                    width: { size: 55, type: WidthType.PERCENTAGE },
+                    children: [
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 50 },
+                        children: [
+                          new TextRun({ text: 'GIÁM ĐỐC', bold: true, size: 24, font }),
+                        ],
+                      }),
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                          new ImageRun({ data: stampData, transformation: { width: 120, height: 80 }, type: 'png' }),
+                          new ImageRun({ data: sigData, transformation: { width: 180, height: 140 }, type: 'png' }),
+                        ],
+                      }),
+                    ],
+                  }),
+                ],
+              }),
             ],
           }),
         ],
@@ -323,10 +361,13 @@ export default function QuotePage() {
         <div className="bg-white rounded-xl border p-5 space-y-3">
           <h2 className="font-semibold text-gray-700">Xem trước</h2>
           <div className="border rounded-lg p-6 max-w-2xl mx-auto text-sm leading-relaxed" style={{ fontFamily: 'Times New Roman, serif' }}>
-            <div className="text-center mb-4">
-              <img src="/sig_4.jpg" alt="Logo" className="h-16 mx-auto mb-1" />
-              <p className="font-bold text-xs">CÔNG TY TNHH TM DV THÀNH TÍN LBG</p>
-              <p className="text-xs text-gray-500">115/22/60 Bis, Đường Nguyễn Du, Phường Bến Thành, TP HCM</p>
+            <div className="flex items-center gap-4 mb-4 pb-3 border-b">
+              <img src="/sig_4.jpg" alt="Logo" className="h-16" />
+              <div className="text-center flex-1">
+                <p className="font-bold text-base">CÔNG TY TNHH THÀNH TÍN LBG</p>
+                <p className="text-xs text-gray-600">Trụ sở: 115/22/60 Bis Nguyễn Du, Phường Bến Thành, TP.HCM</p>
+                <p className="text-xs text-gray-600">Email: thanhtinlpg@gmail.com Điện thoại: 092.555.84.84</p>
+              </div>
             </div>
             <p className="text-center font-bold text-lg mb-4">THƯ CHÀO GIÁ</p>
             <p className="text-right italic mb-4">TPHCM, ngày 01 tháng {String(month).padStart(2, '0')} năm {year}</p>
@@ -348,9 +389,11 @@ export default function QuotePage() {
                 <p>- Lưu VT, KHKD</p>
               </div>
               <div className="text-center">
-                <p className="font-bold text-xs mb-1">CÔNG TY TNHH TM DV THÀNH TÍN LBG</p>
-                <img src="/sig_2.png" alt="Chữ ký" className="h-24 mx-auto" />
-                <img src="/sig_1.png" alt="Con dấu" className="h-16 mx-auto -mt-4" />
+                <p className="font-bold text-sm mb-1">GIÁM ĐỐC</p>
+                <div className="relative">
+                  <img src="/sig_1.png" alt="Con dấu" className="h-20 inline-block" />
+                  <img src="/sig_2.png" alt="Chữ ký" className="h-24 inline-block -ml-8" />
+                </div>
               </div>
             </div>
           </div>
