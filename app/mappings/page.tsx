@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase, Customer } from '@/lib/supabase'
 
 type Mapping = {
@@ -18,7 +18,9 @@ export default function MappingsPage() {
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
+  const [msgType, setMsgType] = useState<'error' | 'success'>('error')
   const [search, setSearch] = useState('')
+  const inputKeyRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     const [{ data: m }, { data: c }] = await Promise.all([
@@ -33,16 +35,36 @@ export default function MappingsPage() {
 
   async function save() {
     if (!form.input_key || !form.customer_code || !form.output_file_name || !form.output_location_name) {
-      setMsg('Cần điền đủ các trường bắt buộc'); return
+      setMsg('Cần điền đủ các trường bắt buộc')
+      setMsgType('error')
+      return
     }
     setMsg('')
     if (editing) {
-      await supabase.from('location_mappings').update(form).eq('id', editing)
+      const { error } = await supabase.from('location_mappings').update({
+        ...form,
+        output_sheet_name: 'công nợ',
+      }).eq('id', editing)
+      if (error) { setMsg('Lỗi: ' + error.message); setMsgType('error'); return }
+      setMsg('Đã cập nhật!')
+      setMsgType('success')
     } else {
-      const { error } = await supabase.from('location_mappings').insert({ ...form, output_sheet_name: 'công nợ' })
-      if (error) { setMsg('Input key đã tồn tại hoặc lỗi: ' + error.message); return }
+      const { error } = await supabase.from('location_mappings').insert({
+        ...form,
+        output_sheet_name: 'công nợ',
+      })
+      if (error) {
+        setMsg(error.message.includes('duplicate') ? 'Input key đã tồn tại!' : 'Lỗi: ' + error.message)
+        setMsgType('error')
+        return
+      }
+      setMsg(`Đã thêm "${form.input_key}" → ${form.customer_code}`)
+      setMsgType('success')
     }
-    setForm(empty); setEditing(null); load()
+    setForm(empty)
+    setEditing(null)
+    load()
+    setTimeout(() => inputKeyRef.current?.focus(), 100)
   }
 
   async function del(id: string) {
@@ -54,23 +76,36 @@ export default function MappingsPage() {
   function edit(m: Mapping) {
     setEditing(m.id)
     setForm({ input_key: m.input_key, customer_code: m.customer_code, output_file_name: m.output_file_name, output_location_name: m.output_location_name })
+    setMsg('')
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault()
+      save()
+    }
   }
 
   const filtered = mappings.filter(m =>
     !search || m.input_key.includes(search.toLowerCase()) || m.customer_code.includes(search.toLowerCase())
   )
 
+  const existingFileNames = [...new Set(mappings.map(m => m.output_file_name))].sort()
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={handleKeyDown}>
       <h1 className="text-xl font-bold text-gray-800">Mapping Mã KH → Khách hàng</h1>
-      <p className="text-sm text-gray-500">Mỗi giá trị trong cột "Mã KH" của file Excel input phải được map vào khách hàng và định dạng output tương ứng.</p>
+      <p className="text-sm text-gray-500">
+        Mỗi giá trị trong cột &quot;Mã KH&quot; của file Excel input phải được map vào khách hàng và định dạng output tương ứng.
+        <span className="ml-2 text-xs text-gray-400">Ctrl+Enter để lưu nhanh</span>
+      </p>
 
       <div className="bg-white rounded-xl border p-5 space-y-3">
         <h2 className="font-semibold text-gray-700">{editing ? 'Sửa mapping' : 'Thêm mapping mới'}</h2>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Mã KH trong input *</label>
-            <input disabled={!!editing} value={form.input_key}
+            <input ref={inputKeyRef} disabled={!!editing} value={form.input_key}
               onChange={e => setForm({ ...form, input_key: e.target.value.toLowerCase() })}
               placeholder="vd: bùi văn ba"
               className="border rounded px-3 py-2 text-sm w-full font-mono disabled:bg-gray-100" />
@@ -84,26 +119,31 @@ export default function MappingsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Tên file output * (không có .xlsx)</label>
-            <input value={form.output_file_name}
+            <label className="block text-xs text-gray-500 mb-1">Tên file output *</label>
+            <input list="file-names" value={form.output_file_name}
               onChange={e => setForm({ ...form, output_file_name: e.target.value })}
-              placeholder="vd: T5_BUI_VAN_BA"
+              placeholder="Chọn hoặc nhập mới"
               className="border rounded px-3 py-2 text-sm w-full font-mono" />
+            <datalist id="file-names">
+              {existingFileNames.map(f => <option key={f} value={f} />)}
+            </datalist>
           </div>
-          <div className="col-span-2">
-            <label className="block text-xs text-gray-500 mb-1">Tên địa điểm trong biên bản (Nội Dung) *</label>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Tên địa điểm (= tên sheet) *</label>
             <input value={form.output_location_name}
               onChange={e => setForm({ ...form, output_location_name: e.target.value })}
               placeholder="vd: BẾP BUIVANBA"
               className="border rounded px-3 py-2 text-sm w-full" />
           </div>
         </div>
-        {msg && <p className="text-red-500 text-sm">{msg}</p>}
+        {msg && (
+          <p className={`text-sm ${msgType === 'error' ? 'text-red-500' : 'text-green-600'}`}>{msg}</p>
+        )}
         <div className="flex gap-2">
           <button onClick={save} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
             {editing ? 'Cập nhật' : 'Thêm mới'}
           </button>
-          {editing && <button onClick={() => { setEditing(null); setForm(empty) }}
+          {editing && <button onClick={() => { setEditing(null); setForm(empty); setMsg('') }}
             className="border px-4 py-2 rounded text-sm hover:bg-gray-50">Hủy</button>}
         </div>
       </div>
