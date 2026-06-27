@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import crypto from 'crypto'
 
@@ -19,7 +19,6 @@ type Row = {
   b45_returned: number
   b12_delivered: number
   b12_returned: number
-  gas_delivered: number
   gas_returned: number
   unit_price: number
   note: string
@@ -28,7 +27,7 @@ type Row = {
 const emptyRow = (): Row => ({
   day: new Date().getDate(), input_key: '', pic: '',
   b45_delivered: 0, b45_returned: 0, b12_delivered: 0, b12_returned: 0,
-  gas_delivered: 0, gas_returned: 0, unit_price: 0, note: '',
+  gas_returned: 0, unit_price: 0, note: '',
 })
 
 export default function ManualPage() {
@@ -54,13 +53,9 @@ export default function ManualPage() {
     const last = rows[rows.length - 1]
     setRows([...rows, { ...emptyRow(), day: last.day, pic: last.pic }])
     setTimeout(() => {
-      const inputs = document.querySelectorAll<HTMLInputElement>('table input[list="input-keys"]')
-      inputs[inputs.length - 1]?.focus()
+      const el = document.getElementById(`row-key-${rows.length}`)
+      el?.focus()
     }, 50)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); addRow() }
   }
 
   function removeRow(idx: number) {
@@ -68,67 +63,52 @@ export default function ManualPage() {
     setRows(rows.filter((_, i) => i !== idx))
   }
 
-  function gasPaid(r: Row) {
-    return r.b45_delivered * 45 + r.b12_delivered * 12 - r.gas_returned
-  }
+  function gasDelivered(r: Row) { return r.b45_delivered * 45 + r.b12_delivered * 12 }
+  function gasPaid(r: Row) { return gasDelivered(r) - r.gas_returned }
 
   async function save() {
     const valid = rows.filter(r => r.input_key)
     if (valid.length === 0) { setMsg('Chưa có dòng nào hợp lệ'); return }
-
     setSaving(true)
     setMsg('')
-
     const mm = new Map(mappings.map(m => [m.input_key, m]))
     const toInsert = valid.map(r => {
       const key = r.input_key.toLowerCase()
       const m = mm.get(key)
       const date = `${year}-${String(month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
+      const gd = gasDelivered(r)
       const gp = gasPaid(r)
       const total = gp * r.unit_price
-      const gasDelivered = r.b45_delivered * 45 + r.b12_delivered * 12
-      const hash = crypto.createHash('md5').update(`${date}|${key}|${gasDelivered}|${total}`).digest('hex')
+      const hash = crypto.createHash('md5').update(`${date}|${key}|${gd}|${total}`).digest('hex')
       return {
-        input_key: key,
-        delivery_date: date,
+        input_key: key, delivery_date: date,
         customer_code: m?.customer_code || 'UNMAPPED',
         location: m?.output_location_name || key,
         output_file_name: m?.output_file_name || null,
         output_sheet_name: m?.output_sheet_name || null,
         pic: r.pic,
-        b45_delivered: r.b45_delivered,
-        b45_returned: r.b45_returned,
-        b12_delivered: r.b12_delivered,
-        b12_returned: r.b12_returned,
-        gas_delivered: gasDelivered,
-        gas_returned: r.gas_returned,
-        gas_paid: gp,
-        unit_price: r.unit_price,
-        total_amount: total,
-        note: r.note,
-        month, year,
-        dedup_hash: hash,
+        b45_delivered: r.b45_delivered, b45_returned: r.b45_returned,
+        b12_delivered: r.b12_delivered, b12_returned: r.b12_returned,
+        gas_delivered: gd, gas_returned: r.gas_returned, gas_paid: gp,
+        unit_price: r.unit_price, total_amount: total,
+        note: r.note, month, year, dedup_hash: hash,
       }
     })
-
-    // Dedup check
     const hashes = toInsert.map(r => r.dedup_hash)
     const { data: existing } = await supabase.from('transactions').select('dedup_hash').in('dedup_hash', hashes)
     const exSet = new Set((existing || []).map(e => e.dedup_hash))
     const newRows = toInsert.filter(r => !exSet.has(r.dedup_hash))
     const dupes = toInsert.length - newRows.length
-
     if (newRows.length === 0) {
       setMsg(`Tất cả ${toInsert.length} dòng đã tồn tại (trùng)`)
       setSaving(false)
       return
     }
-
     const { error } = await supabase.from('transactions').insert(newRows)
     if (error) {
       setMsg('Lỗi: ' + error.message)
     } else {
-      setMsg(`Đã lưu ${newRows.length} dòng!${dupes > 0 ? ` (${dupes} dòng trùng, bỏ qua)` : ''}`)
+      setMsg(`Đã lưu ${newRows.length} dòng!${dupes > 0 ? ` (${dupes} trùng)` : ''}`)
       setRows([emptyRow()])
     }
     setSaving(false)
@@ -137,37 +117,44 @@ export default function ManualPage() {
   const inputKeys = mappings.map(m => m.input_key).sort()
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-gray-800">Nhập tay giao dịch</h1>
+    <div className="space-y-4 pb-24">
+      <h1 className="text-lg md:text-xl font-bold text-gray-800">Nhập tay giao dịch</h1>
 
-      <div className="bg-white rounded-xl border p-4 flex gap-4 items-end">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Tháng</label>
-          <select value={month} onChange={e => setMonth(Number(e.target.value))}
-            className="border rounded px-3 py-2 text-sm">
-            {Array.from({ length: 12 }, (_, i) => i + 1).map(m =>
-              <option key={m} value={m}>Tháng {m}</option>
-            )}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Năm</label>
-          <input type="number" value={year} onChange={e => setYear(Number(e.target.value))}
-            className="border rounded px-3 py-2 text-sm w-24" />
+      <div className="bg-white rounded-xl border p-3 flex flex-wrap gap-3 items-end">
+        <div className="flex gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Tháng</label>
+            <select value={month} onChange={e => setMonth(Number(e.target.value))}
+              className="border rounded px-2 py-2 text-sm">
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m =>
+                <option key={m} value={m}>T{m}</option>
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Năm</label>
+            <input type="number" value={year} onChange={e => setYear(Number(e.target.value))}
+              className="border rounded px-2 py-2 text-sm w-20" />
+          </div>
         </div>
       </div>
 
       {msg && (
-        <div className={`rounded-lg px-4 py-3 text-sm border ${msg.includes('Lỗi') ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+        <div className={`rounded-lg px-3 py-2.5 text-sm border ${msg.includes('Lỗi') ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
           {msg}
         </div>
       )}
 
-      <div className="bg-white rounded-xl border overflow-auto">
+      <datalist id="input-keys">
+        {inputKeys.map(k => <option key={k} value={k} />)}
+      </datalist>
+
+      {/* Desktop: table */}
+      <div className="hidden md:block bg-white rounded-xl border overflow-auto">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b">
             <tr>
-              {['Ngày', 'Mã KH', 'PIC', 'B45↓', 'B45↑', 'B12↓', 'B12↑', 'Gas giao', 'Gas trả', 'Gas TT', 'Đơn giá', 'Thành tiền', 'Ghi chú', ''].map(h => (
+              {['Ngày','Mã KH','PIC','B45↓','B45↑','B12↓','B12↑','Gas giao','Gas trả','Gas TT','Đơn giá','Thành tiền','Ghi chú',''].map(h => (
                 <th key={h} className="px-2 py-2.5 font-medium text-gray-600 whitespace-nowrap text-center">{h}</th>
               ))}
             </tr>
@@ -179,85 +166,126 @@ export default function ManualPage() {
               const m = mappings.find(m => m.input_key === r.input_key)
               return (
                 <tr key={i} className={`border-b ${!m && r.input_key ? 'bg-amber-50' : 'hover:bg-gray-50'}`}>
-                  <td className="px-1 py-1.5">
-                    <input type="number" min={1} max={31} value={r.day}
-                      onChange={e => updateRow(i, 'day', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-center" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input list="input-keys" value={r.input_key}
-                      onChange={e => updateRow(i, 'input_key', e.target.value.toLowerCase())}
-                      placeholder="Chọn/nhập"
-                      className="border rounded px-2 py-1.5 text-sm w-40" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input value={r.pic} onChange={e => updateRow(i, 'pic', e.target.value)}
-                      className="border rounded px-2 py-1.5 text-sm w-16" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" value={r.b45_delivered || ''}
-                      onChange={e => updateRow(i, 'b45_delivered', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" value={r.b45_returned || ''}
-                      onChange={e => updateRow(i, 'b45_returned', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" value={r.b12_delivered || ''}
-                      onChange={e => updateRow(i, 'b12_delivered', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" value={r.b12_returned || ''}
-                      onChange={e => updateRow(i, 'b12_returned', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-14 text-right" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
-                    {(r.b45_delivered * 45 + r.b12_delivered * 12) || ''}
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" step="0.1" value={r.gas_returned || ''}
-                      onChange={e => updateRow(i, 'gas_returned', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-16 text-right" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-medium text-blue-600 whitespace-nowrap">
-                    {gp > 0 ? gp.toFixed(1) : ''}
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input type="number" value={r.unit_price || ''}
-                      onChange={e => updateRow(i, 'unit_price', Number(e.target.value))}
-                      className="border rounded px-2 py-1.5 text-sm w-20 text-right" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-medium whitespace-nowrap">
-                    {total > 0 ? total.toLocaleString('vi-VN') : ''}
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input value={r.note} onChange={e => updateRow(i, 'note', e.target.value)}
-                      className="border rounded px-2 py-1.5 text-sm w-24" onKeyDown={handleKeyDown} />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600 text-lg px-1"
-                      title="Xóa dòng">×</button>
-                  </td>
+                  <td className="px-1 py-1"><input type="number" min={1} max={31} value={r.day} onChange={e => updateRow(i,'day',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-14 text-center" /></td>
+                  <td className="px-1 py-1"><input id={`row-key-${i}`} list="input-keys" value={r.input_key} onChange={e => updateRow(i,'input_key',e.target.value.toLowerCase())} placeholder="Mã KH" className="border rounded px-2 py-1.5 text-sm w-36" /></td>
+                  <td className="px-1 py-1"><input value={r.pic} onChange={e => updateRow(i,'pic',e.target.value)} className="border rounded px-2 py-1.5 text-sm w-16" /></td>
+                  <td className="px-1 py-1"><input type="number" value={r.b45_delivered||''} onChange={e => updateRow(i,'b45_delivered',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
+                  <td className="px-1 py-1"><input type="number" value={r.b45_returned||''} onChange={e => updateRow(i,'b45_returned',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
+                  <td className="px-1 py-1"><input type="number" value={r.b12_delivered||''} onChange={e => updateRow(i,'b12_delivered',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
+                  <td className="px-1 py-1"><input type="number" value={r.b12_returned||''} onChange={e => updateRow(i,'b12_returned',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
+                  <td className="px-2 py-1 text-right text-gray-700">{gasDelivered(r)||''}</td>
+                  <td className="px-1 py-1"><input type="number" step="0.1" value={r.gas_returned||''} onChange={e => updateRow(i,'gas_returned',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-16 text-right" /></td>
+                  <td className="px-2 py-1 text-right text-blue-600 font-medium">{gp>0?gp.toFixed(1):''}</td>
+                  <td className="px-1 py-1"><input type="number" value={r.unit_price||''} onChange={e => updateRow(i,'unit_price',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-20 text-right" /></td>
+                  <td className="px-2 py-1 text-right font-medium">{total>0?total.toLocaleString('vi-VN'):''}</td>
+                  <td className="px-1 py-1"><input value={r.note} onChange={e => updateRow(i,'note',e.target.value)} className="border rounded px-2 py-1.5 text-sm w-20" /></td>
+                  <td className="px-1 py-1"><button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600 text-lg">×</button></td>
                 </tr>
               )
             })}
           </tbody>
         </table>
-        <datalist id="input-keys">
-          {inputKeys.map(k => <option key={k} value={k} />)}
-        </datalist>
       </div>
 
-      <div className="flex gap-3">
+      {/* Mobile: cards */}
+      <div className="md:hidden space-y-3">
+        {rows.map((r, i) => {
+          const gp = gasPaid(r)
+          const total = gp * r.unit_price
+          const m = mappings.find(m => m.input_key === r.input_key)
+          return (
+            <div key={i} className={`rounded-xl border p-3 space-y-2 ${!m && r.input_key ? 'bg-amber-50 border-amber-200' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400">#{i + 1}</span>
+                <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600 text-sm">Xóa</button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500">Ngày</label>
+                  <input type="number" min={1} max={31} value={r.day}
+                    onChange={e => updateRow(i, 'day', Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-center" inputMode="numeric" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-500">Mã KH</label>
+                  <input id={`row-key-${i}`} list="input-keys" value={r.input_key}
+                    onChange={e => updateRow(i, 'input_key', e.target.value.toLowerCase())}
+                    placeholder="Chọn/nhập mã KH"
+                    className="border rounded px-2 py-2 text-sm w-full" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500">B45↓</label>
+                  <input type="number" value={r.b45_delivered||''} onChange={e => updateRow(i,'b45_delivered',Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-center" inputMode="numeric" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500">B45↑</label>
+                  <input type="number" value={r.b45_returned||''} onChange={e => updateRow(i,'b45_returned',Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-center" inputMode="numeric" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500">B12↓</label>
+                  <input type="number" value={r.b12_delivered||''} onChange={e => updateRow(i,'b12_delivered',Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-center" inputMode="numeric" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500">B12↑</label>
+                  <input type="number" value={r.b12_returned||''} onChange={e => updateRow(i,'b12_returned',Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-center" inputMode="numeric" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-gray-50 rounded px-2 py-2 text-center">
+                  <label className="block text-xs text-gray-400">Gas giao</label>
+                  <span className="text-sm font-medium">{gasDelivered(r)||'-'}</span>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500">Gas trả</label>
+                  <input type="number" step="0.1" value={r.gas_returned||''} onChange={e => updateRow(i,'gas_returned',Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-center" inputMode="decimal" />
+                </div>
+                <div className="bg-blue-50 rounded px-2 py-2 text-center">
+                  <label className="block text-xs text-blue-500">Gas TT</label>
+                  <span className="text-sm font-bold text-blue-700">{gp>0?gp.toFixed(1):'-'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500">PIC</label>
+                  <input value={r.pic} onChange={e => updateRow(i,'pic',e.target.value)}
+                    className="border rounded px-2 py-2 text-sm w-full" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500">Ghi chú</label>
+                  <input value={r.note} onChange={e => updateRow(i,'note',e.target.value)}
+                    className="border rounded px-2 py-2 text-sm w-full" />
+                </div>
+              </div>
+
+              {total > 0 && (
+                <div className="text-right text-sm font-bold text-green-700">
+                  = {total.toLocaleString('vi-VN')} đ
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Fixed bottom bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex gap-3 justify-center z-40">
         <button onClick={addRow}
-          className="border border-blue-300 text-blue-600 px-4 py-2 rounded text-sm hover:bg-blue-50">
+          className="border border-blue-300 text-blue-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-50 flex-1 max-w-40">
           + Thêm dòng
         </button>
         <button onClick={save} disabled={saving}
-          className="bg-green-600 text-white px-5 py-2 rounded text-sm hover:bg-green-700 disabled:opacity-50">
+          className="bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex-1 max-w-52">
           {saving ? 'Đang lưu...' : `Lưu ${rows.filter(r => r.input_key).length} dòng`}
         </button>
       </div>
