@@ -4,6 +4,8 @@ import { supabase, Customer, Transaction } from '@/lib/supabase'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
+function fmtDate(d: string) { const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}` }
+
 const COMPANY_NAME = 'CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ THÀNH TÍN LBG'
 const COMPANY_ADDRESS = '115/22/60 BIS Đường Nguyễn Du, Phường 7, Quận Bình Thạnh, TP HCM'
 
@@ -147,7 +149,7 @@ export default function ExportPage() {
       const noPrice = !r.unit_price || r.unit_price === 0
       const rowLocation = r.location || locationName
       const vals: (string|number|ExcelJS.CellFormulaValue)[] = [
-        idx+1, r.delivery_date, rowLocation,
+        idx+1, fmtDate(r.delivery_date), rowLocation,
         r.b45_delivered||0, r.b45_returned||0,
         r.b12_delivered||0, r.b12_returned||0,
         r.gas_delivered||0, r.gas_returned||0,
@@ -269,7 +271,7 @@ export default function ExportPage() {
       for (const r of sg.rows) {
         const dr = ws.getRow(row)
         const rn = row
-        dr.getCell(1).value = r.delivery_date
+        dr.getCell(1).value = fmtDate(r.delivery_date)
         dr.getCell(2).value = 'Khí hoá lỏng (LPG)'
         dr.getCell(3).value = 'Kg'
         const noPrice = !r.unit_price || r.unit_price === 0
@@ -475,7 +477,7 @@ export default function ExportPage() {
                         {sg.rows.map((r,i)=>(
                           <tr key={r.id} className="border-t hover:bg-gray-50">
                             <td className="px-2 py-1.5 text-center">{i+1}</td>
-                            <td className="px-2 py-1.5 whitespace-nowrap">{r.delivery_date}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">{fmtDate(r.delivery_date)}</td>
                             <td className="px-2 py-1.5">{sg.locationName}</td>
                             <td className="px-2 py-1.5 text-right">{r.b45_delivered||''}</td>
                             <td className="px-2 py-1.5 text-right">{r.b45_returned||''}</td>
