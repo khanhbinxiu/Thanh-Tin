@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 type MonthRow = {
@@ -18,12 +18,17 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
+  const dateFromRef = useRef(dateFrom)
+  const dateToRef = useRef(dateTo)
+  dateFromRef.current = dateFrom
+  dateToRef.current = dateTo
+
   async function load() {
     setLoading(true)
     const { data: txs } = await supabase.from('transactions')
       .select('delivery_date, gas_delivered, gas_paid, total_amount')
-      .gte('delivery_date', dateFrom)
-      .lte('delivery_date', dateTo)
+      .gte('delivery_date', dateFromRef.current)
+      .lte('delivery_date', dateToRef.current)
 
     const grouped = new Map<string, MonthRow>()
     for (const tx of (txs || [])) {
