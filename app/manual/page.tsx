@@ -14,7 +14,6 @@ type Mapping = {
 type Row = {
   day: number
   input_key: string
-  pic: string
   b45_delivered: number
   b45_returned: number
   b12_delivered: number
@@ -25,10 +24,12 @@ type Row = {
 }
 
 const emptyRow = (): Row => ({
-  day: new Date().getDate(), input_key: '', pic: '',
+  day: new Date().getDate(), input_key: '',
   b45_delivered: 0, b45_returned: 0, b12_delivered: 0, b12_returned: 0,
   gas_returned: 0, unit_price: 0, note: '',
 })
+
+type PriceMap = Record<string, number>
 
 export default function ManualPage() {
   const [month, setMonth] = useState(new Date().getMonth() + 1)
@@ -37,21 +38,47 @@ export default function ManualPage() {
   const [rows, setRows] = useState<Row[]>([emptyRow()])
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
+  const [prices, setPrices] = useState<PriceMap>({})
 
   useEffect(() => {
     supabase.from('location_mappings').select('*').order('input_key')
       .then(({ data }) => setMappings(data || []))
   }, [])
 
+  useEffect(() => {
+    async function loadPrices() {
+      const lastDay = new Date(year, month, 0).getDate()
+      const from = `${year}-${String(month).padStart(2, '0')}-01`
+      const to = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
+      const { data } = await supabase.from('transactions')
+        .select('customer_code, unit_price')
+        .gte('delivery_date', from).lte('delivery_date', to)
+        .gt('unit_price', 0)
+      const pm: PriceMap = {}
+      for (const tx of (data || [])) {
+        if (tx.unit_price && !pm[tx.customer_code]) pm[tx.customer_code] = tx.unit_price
+      }
+      setPrices(pm)
+    }
+    loadPrices()
+  }, [month, year])
+
   function updateRow(idx: number, field: keyof Row, value: string | number) {
     const updated = [...rows]
     updated[idx] = { ...updated[idx], [field]: value }
+    if (field === 'input_key') {
+      const key = String(value).toLowerCase()
+      const m = mappings.find(m => m.input_key === key)
+      if (m && prices[m.customer_code] && !updated[idx].unit_price) {
+        updated[idx].unit_price = prices[m.customer_code]
+      }
+    }
     setRows(updated)
   }
 
   function addRow() {
     const last = rows[rows.length - 1]
-    setRows([...rows, { ...emptyRow(), day: last.day, pic: last.pic }])
+    setRows([...rows, { ...emptyRow(), day: last.day }])
     setTimeout(() => {
       const el = document.getElementById(`row-key-${rows.length}`)
       el?.focus()
@@ -86,7 +113,7 @@ export default function ManualPage() {
         location: m?.output_location_name || key,
         output_file_name: m?.output_file_name || null,
         output_sheet_name: m?.output_sheet_name || null,
-        pic: r.pic,
+        pic: '',
         b45_delivered: r.b45_delivered, b45_returned: r.b45_returned,
         b12_delivered: r.b12_delivered, b12_returned: r.b12_returned,
         gas_delivered: gd, gas_returned: r.gas_returned, gas_paid: gp,
@@ -154,7 +181,7 @@ export default function ManualPage() {
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b">
             <tr>
-              {['Ngày','Mã KH','PIC','B45↓','B45↑','B12↓','B12↑','Gas giao','Gas trả','Gas TT','Đơn giá','Thành tiền','Ghi chú',''].map(h => (
+              {['Ngày','Mã KH','B45↓','B45↑','B12↓','B12↑','Gas giao','Gas trả','Gas TT','Đơn giá','Thành tiền','Ghi chú',''].map(h => (
                 <th key={h} className="px-2 py-2.5 font-medium text-gray-600 whitespace-nowrap text-center">{h}</th>
               ))}
             </tr>
@@ -168,7 +195,6 @@ export default function ManualPage() {
                 <tr key={i} className={`border-b ${!m && r.input_key ? 'bg-amber-50' : 'hover:bg-gray-50'}`}>
                   <td className="px-1 py-1"><input type="number" min={1} max={31} value={r.day} onChange={e => updateRow(i,'day',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-14 text-center" /></td>
                   <td className="px-1 py-1"><input id={`row-key-${i}`} list="input-keys" value={r.input_key} onChange={e => updateRow(i,'input_key',e.target.value.toLowerCase())} placeholder="Mã KH" className="border rounded px-2 py-1.5 text-sm w-36" /></td>
-                  <td className="px-1 py-1"><input value={r.pic} onChange={e => updateRow(i,'pic',e.target.value)} className="border rounded px-2 py-1.5 text-sm w-16" /></td>
                   <td className="px-1 py-1"><input type="number" value={r.b45_delivered||''} onChange={e => updateRow(i,'b45_delivered',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
                   <td className="px-1 py-1"><input type="number" value={r.b45_returned||''} onChange={e => updateRow(i,'b45_returned',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
                   <td className="px-1 py-1"><input type="number" value={r.b12_delivered||''} onChange={e => updateRow(i,'b12_delivered',Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm w-12 text-right" /></td>
@@ -257,9 +283,9 @@ export default function ManualPage() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs text-gray-500">PIC</label>
-                  <input value={r.pic} onChange={e => updateRow(i,'pic',e.target.value)}
-                    className="border rounded px-2 py-2 text-sm w-full" />
+                  <label className="block text-xs text-gray-500">Đơn giá {(() => { const mp = mappings.find(mp => mp.input_key === r.input_key); return mp && prices[mp.customer_code] && !r.unit_price ? `(gợi ý: ${prices[mp.customer_code].toLocaleString('vi-VN')})` : '' })()}</label>
+                  <input type="number" value={r.unit_price||''} onChange={e => updateRow(i,'unit_price',Number(e.target.value))}
+                    className="border rounded px-2 py-2 text-sm w-full text-right" inputMode="numeric" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500">Ghi chú</label>
