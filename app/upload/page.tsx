@@ -1,6 +1,8 @@
 'use client'
 import { useState, useCallback } from 'react'
 import * as XLSX from 'xlsx'
+
+function fmtDate(d: string) { const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}` }
 import { supabase } from '@/lib/supabase'
 import crypto from 'crypto'
 
@@ -267,7 +269,7 @@ export default function UploadPage() {
                         {r.status === 'new' ? 'Mới' : r.status === 'unmapped' ? 'Map?' : 'Trùng'}
                       </span>
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{r.delivery_date}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.delivery_date)}</td>
                     <td className="px-3 py-2 font-mono">{r.input_key}</td>
                     <td className="px-3 py-2">{r.customer_code || <span className="text-amber-500">—</span>}</td>
                     <td className="px-3 py-2">{r.location !== r.input_key ? r.location : <span className="text-gray-400">—</span>}</td>

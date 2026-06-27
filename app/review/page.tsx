@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { supabase, Transaction, Customer } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 
+function fmtDate(d: string) { const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}` }
+
 export default function ReviewPage() {
   const [rows, setRows] = useState<Transaction[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -29,7 +31,7 @@ export default function ReviewPage() {
 
   function exportExcel() {
     const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
-      'Ngày giao': r.delivery_date,
+      'Ngày giao': fmtDate(r.delivery_date),
       'Mã KH': r.customer_code,
       'Địa điểm': r.location,
       'PIC': r.pic,
@@ -93,7 +95,7 @@ export default function ReviewPage() {
             {loading && <tr><td colSpan={12} className="px-4 py-8 text-center text-gray-400">Đang tải...</td></tr>}
             {!loading && rows.map(r => (
               <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="px-3 py-2 whitespace-nowrap">{r.delivery_date}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.delivery_date)}</td>
                 <td className="px-3 py-2 font-medium">{r.customer_code}</td>
                 <td className="px-3 py-2">{r.location}</td>
                 <td className="px-3 py-2 text-right">{r.b45_delivered || ''}</td>
