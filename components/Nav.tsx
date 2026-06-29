@@ -8,8 +8,10 @@ const links = [
   { href: '/customers', label: 'Khách hàng', icon: '👥' },
   { href: '/mappings', label: 'Mapping', icon: '🔗' },
   { href: '/manual', label: 'Nhập tay', icon: '✏️' },
+  { href: '/preorder', label: 'Đặt trước', icon: '📦' },
   { href: '/prices', label: 'Giá & Báo giá', icon: '💰' },
   { href: '/export', label: 'Xuất biên bản', icon: '📄' },
+  { href: '/inventory', label: 'Tồn kho', icon: '🏭' },
   { href: '/review', label: 'Xem dữ liệu', icon: '🔍' },
 ]
 

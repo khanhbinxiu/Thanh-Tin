@@ -45,6 +45,7 @@ export default function ExportPage() {
       .gte('delivery_date', from)
       .lte('delivery_date', to)
       .not('output_file_name', 'is', null)
+      .eq('trang_thai', 'đã giao')
       .order('delivery_date')
     const txs: Transaction[] = data || []
 

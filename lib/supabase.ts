@@ -38,5 +38,6 @@ export type Transaction = {
   period_start: string | null
   period_end: string | null
   dedup_hash: string
+  trang_thai: string | null
   created_at: string
 }
