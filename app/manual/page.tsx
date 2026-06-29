@@ -39,7 +39,7 @@ export default function ManualPage() {
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [prices, setPrices] = useState<PriceMap>({})
-  const [trangThai, setTrangThai] = useState<'đã giao' | 'đặt trước'>('đã giao')
+  const trangThai = 'đã giao'
 
   useEffect(() => {
     supabase.from('location_mappings').select('*').order('input_key')
@@ -164,14 +164,6 @@ export default function ManualPage() {
             <input type="number" value={year} onChange={e => setYear(Number(e.target.value))}
               className="border rounded px-2 py-2 text-sm w-20" />
           </div>
-        </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          <button onClick={() => setTrangThai('đã giao')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${trangThai === 'đã giao' ? 'bg-green-600 text-white shadow' : 'text-gray-500'}`}>
-            Đã giao
-          </button>
-          <button onClick={() => setTrangThai('đặt trước')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${trangThai === 'đặt trước' ? 'bg-amber-500 text-white shadow' : 'text-gray-500'}`}>
-            Đặt trước
-          </button>
         </div>
       </div>
 
